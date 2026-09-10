@@ -1,7 +1,10 @@
 # abstraction-storage
 
-**In development.** A tag exists (`go/v0.2.0`) but no conformance scenario
-covers this layer yet, and the API carries no stability promise.
+**In development.** No conformance scenario covers this layer yet, and the API
+carries no stability promise. Tags exist and no version number is typed on this
+page: [the tag list](https://github.com/openabstractions/abstraction-storage/tags)
+is the answer to "which release", because a tag is the only thing that cannot
+drift.
 
 Bytes at rest are addressed by the sha256 digest of the bytes themselves, so
 whether a machine already holds some content is one question with one answer
@@ -36,8 +39,9 @@ layer.
 
 - **Go.** `go get github.com/openabstractions/abstraction-storage/go`. The
   module path ends in `/go`; the package is `storage`, so import it with an
-  explicit alias. The newest tag is `go/v0.2.0`; `@main` is the tree as it
-  stands.
+  explicit alias.
+  [Releases, newest first](https://github.com/openabstractions/abstraction-storage/tags);
+  pin the exact tag you tested against, or `@main` for the tree as it stands.
 - **Python.** None.
 - **C++.** With CMake `FetchContent`, pinning a commit — the on-disk layout is
   a contract shared with the Go side, and a branch can move under an adopter:
@@ -51,6 +55,9 @@ FetchContent_Declare(abstraction_storage
 FetchContent_MakeAvailable(abstraction_storage)
 target_link_libraries(your_target PRIVATE abstraction::storage)
 ```
+
+Whether to adopt this at all, what it costs and what is not proven:
+[Adopting](CONTRIBUTING.md#adopting).
 
 ## Example
 
