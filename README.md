@@ -1,5 +1,8 @@
 # abstraction-storage
 
+**In development.** A tag exists (`go/v0.2.0`) but no conformance scenario
+covers this layer yet, and the API carries no stability promise.
+
 Bytes at rest are addressed by the sha256 digest of the bytes themselves, so
 whether a machine already holds some content is one question with one answer
 across every tool that stores content by name.
@@ -33,7 +36,7 @@ layer.
 
 - **Go.** `go get github.com/openabstractions/abstraction-storage/go`. The
   module path ends in `/go`; the package is `storage`, so import it with an
-  explicit alias. The newest tag is `go/v0.1.0`; `@main` is the tree as it
+  explicit alias. The newest tag is `go/v0.2.0`; `@main` is the tree as it
   stands.
 - **Python.** None.
 - **C++.** With CMake `FetchContent`, pinning a commit — the on-disk layout is
@@ -169,7 +172,7 @@ hold an implementation to it.
 
 ## Requirements
 
-Go 1.26 or newer. C++17 and CMake 3.16 or newer. No third-party dependencies in
+Go 1.13 or newer. C++17 and CMake 3.16 or newer. No third-party dependencies in
 either binding. Tested on Windows and Linux.
 
 ```bash
