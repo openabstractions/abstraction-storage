@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.16)
+project(storage_content_consumer LANGUAGES CXX)
+find_package(abstraction_storage_content CONFIG REQUIRED)
+add_executable(storage_content_consumer main.cpp)
+target_link_libraries(storage_content_consumer PRIVATE abstraction::storage_client)

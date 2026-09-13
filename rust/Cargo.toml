@@ -1,0 +1,9 @@
+[package]
+name="abstraction-storage-content-api"
+version="0.0.0"
+edition="2021"
+[lib]
+path="../rs/abstraction/storage/content/rec.rs"
+
+[dependencies]
+abstraction-frame={path="../../abstraction-identity/rust-frame"}
