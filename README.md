@@ -1,192 +1,41 @@
 # abstraction-storage
 
-**In development.** No conformance scenario covers this layer yet, and the API
-carries no stability promise. Tags exist and no version number is typed on this
-page: [the tag list](https://github.com/openabstractions/abstraction-storage/tags)
-is the answer to "which release", because a tag is the only thing that cannot
-drift.
+Applications obtain content through an authorized service reader. The provider
+owns backend paths and file access. A client opens a canonical content identifier,
+reads bounded chunks and closes its caller-scoped resource; no provider path is
+returned as a file handle for the application to open.
 
-Bytes at rest are addressed by the sha256 digest of the bytes themselves, so
-whether a machine already holds some content is one question with one answer
-across every tool that stores content by name.
+## Application clients
 
-## The problem
+Select `abstraction.storage/content-reader@1` through the facade and use its typed storage
+client. Current Go, C++, Python and Rust clients use the shared IPC boundary.
+[C++ service package proof](cpp/test/service/README.md), [Python protocol setup](py/README.md)
+and the [facade packages](https://github.com/openabstractions/abstraction-facade)
+describe independent adoption and waiting/trust configuration.
 
-Several AI tools keep model caches on the same disk, and two common ones —
-Ollama and the HuggingFace hub cache — already name files by sha256. Nothing
-reads across them, so a machine can hold the same weights twice under different
-names, and an application about to download something cannot ask whether those
-exact bytes are already here. The write side has the matching gap: an
-application that picks its own destination spells `output + ".partial"` at every
-call site, then needs more code to scan for, delete and skip those files. This
-layer names both operations — `Find` and `Place` — and returns a `Ref` that
-carries no path a caller can concatenate.
+The receiving service authorizes content access. Revocation, unavailable authority,
+expired resources and changed content have explicit refusal/gap outcomes. A content
+name alone does not grant access or prove the returned bytes: verify the assembled
+digest where that guarantee is required. Copy helpers bound memory and retain one
+waiting scope; cancellation leaves service-owned content intact.
 
-## Words
+Read [CONTRACT.md](CONTRACT.md) and [content.thrift](content.thrift) for exact
+outcomes, bounds and authority semantics. Service support and language clients
+are separate from published package availability and native platform qualification.
+macOS local Program proof remains unavailable.
 
-| word | meaning |
-|---|---|
-| **digest** | `sha256:<hex>` of the bytes; the only name a store answers to |
-| **store** | something that can answer `Find(digest)` and `Place(digest, size)` |
-| **ref** | what a store hands back: `Store`, `Digest`, `Size`, and nothing a caller can turn into a path |
-| **place** | a reservation for bytes not yet here; it becomes findable only after `Commit` |
-| **foreign store** | another tool's content-addressed directory, read but never written |
+## Explicit native providers
 
-No rule on this page carries a tag, and no conformance scenario cites this
-layer.
+The existing `Store`, `Local`, `Writable`, `NewContent` and foreign-store adapters
+are provider building blocks. A program deliberately selecting such a provider
+owns its filesystem access and lifecycle. The service composes these providers;
+normal clients use the content-reader contract. Existing provider data need not
+be copied into an application-owned store to use the service.
 
-## Obtain
+Go provider sources require Go 1.26 and the identity module. Install coordinated
+source/package revisions as documented by the selected client. Development
+package metadata does not establish a registry release. See the source tests and
+[coverage](https://github.com/openabstractions/abstractions)
+for scoped evidence rather than a blanket cross-language provider verdict.
 
-- **Go.** `go get github.com/openabstractions/abstraction-storage/go`. The
-  module path ends in `/go`; the package is `storage`, so import it with an
-  explicit alias.
-  [Releases, newest first](https://github.com/openabstractions/abstraction-storage/tags);
-  pin the exact tag you tested against, or `@main` for the tree as it stands.
-- **Python.** None.
-- **C++.** With CMake `FetchContent`, pinning a commit — the on-disk layout is
-  a contract shared with the Go side, and a branch can move under an adopter:
-```cmake
-include(FetchContent)
-FetchContent_Declare(abstraction_storage
-    GIT_REPOSITORY https://github.com/openabstractions/abstraction-storage.git
-    GIT_TAG        <a commit sha>
-    GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(abstraction_storage)
-target_link_libraries(your_target PRIVATE abstraction::storage)
-```
-
-Whether to adopt this at all, what it costs and what is not proven:
-[Adopting](CONTRIBUTING.md#adopting).
-
-## Example
-
-```go
-package main
-
-import (
-	"fmt"
-	"os"
-	"path/filepath"
-
-	storage "github.com/openabstractions/abstraction-storage/go"
-)
-
-func main() {
-	root := filepath.Join(os.TempDir(), "storage-example")
-	defer os.RemoveAll(root)
-
-	// NewContent creates the store's directories if they are missing.
-	content, err := storage.NewContent("local", root)
-	if err != nil {
-		panic(err)
-	}
-
-	// The sha256 of the three bytes "foo".
-	const digest = "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
-
-	// Place reserves a location and writes nothing. Whoever moves the bytes --
-	// possibly another process, later -- asks the store where they go.
-	ref, err := content.Place(digest, 3)
-	if err != nil {
-		panic(err)
-	}
-	if err := os.WriteFile(content.Path(ref), []byte("foo"), 0o644); err != nil {
-		panic(err)
-	}
-
-	_, found := content.Find(digest)
-	fmt.Println("findable before commit:", found)
-
-	if err := content.Commit(ref); err != nil {
-		panic(err)
-	}
-	got, found := content.Find(digest)
-	fmt.Println("findable after commit:", found)
-	fmt.Println("store:", got.Store, "size:", got.Size)
-}
-```
-
-Output:
-
-```
-findable before commit: false
-findable after commit: true
-store: local size: 3
-```
-
-## API overview
-
-**Go.** `Store` is `Name() string`, `Find(digest string) (Ref, bool)`,
-`Place(digest string, size int64) (Ref, error)`. `Find` hashes nothing; it
-answers from the store's own naming convention, so a hit is a claim the caller
-should still verify. `Place` performs no I/O on the bytes, and a reservation
-becomes findable only after `Commit`. Two optional capabilities, reached by type
-assertion: `Local` adds `Path(Ref) string`, `Writable` adds `Commit(Ref) error`.
-`Ref` exposes `Store`, `Digest` and `Size` and nothing else; `Locator(Ref)` and
-`NewRef(store, digest, locator, size)` are for code implementing a `Store`.
-
-`NewContent(name, root)` is writable, laid out as `<root>/blobs/sha256-<hex>`
-and `<root>/incoming/sha256-<hex>`, and has `Root()`. `NewForeign(name, dir,
-prefix)` reads another tool's content-addressed directory and returns
-`ErrReadOnly` from `Place`. `Discover()` returns the foreign stores found under
-the user's home directory: Ollama's blobs, and each HuggingFace and Lemonade hub
-repository. `New(stores...)` returns `*Stores`, which searches several in the
-caller's order, satisfies all three interfaces, and adds `Add`, `FindAll(digest)
-[]Ref`, `Names()` and `Len()`. `ErrReadOnly` and `ErrNotFound` are wrapped, so
-test with `errors.Is`.
-
-**C++.** Header `abstraction/storage/storage.h`, namespace
-`abstraction::storage`, CMake target `abstraction::storage`. It covers the write
-half only: `Ref`, `Store`, `Local`, `Writable`, `Content`, `make_ref`,
-`locator_of`, `normal_digest`, and the exceptions `StorageError`, `ReadOnly` and
-`NotFound`. `Local` here has one method the Go side does not need,
-`incoming_path(const Ref&)`, the only supported way to name a location for bytes
-still arriving.
-
-## Today
-
-Experimental, version 0.1.0, not yet used outside this organisation.
-
-- **Go**: the whole interface; consumed by `abstraction-model`.
-- **C++**: the write half. `Foreign` and `Discover` exist only in Go, so C++ can
-  write a content-addressed store but cannot read anyone else's. No adopter.
-- `Discover` looks only at fixed paths under the user's home directory. Caches
-  moved elsewhere are not found, and a store that publishes no digest cannot
-  participate at all.
-- Nothing garbage-collects `incoming/`; an abandoned reservation stays there.
-
-## Conformance
-
-None across languages: the two implementations agree about the on-disk layout
-by inspection, not by anything that runs. 7 Go tests and one C++ test
-executable, run by the commands under Requirements.
-
-## Where it sits
-
-Below: nothing of ours. Above:
-[abstraction-download](https://github.com/openabstractions/abstraction-download)
-asks it whether the bytes are already here,
-[abstraction-model](https://github.com/openabstractions/abstraction-model)
-adds local copies as sources, and
-[abstraction-facade](https://github.com/openabstractions/abstraction-facade)
-hands a program the machine's stores.
-
-One layer of [openabstractions](https://github.com/openabstractions/abstractions).
-Every layer names one thing local tools rebuild on their own; the name means the
-same in each language that implements it, and the conformance scenarios are what
-hold an implementation to it.
-
-## Requirements
-
-Go 1.13 or newer. C++17 and CMake 3.16 or newer. No third-party dependencies in
-either binding. Tested on Windows and Linux.
-
-```bash
-(cd go && go test ./...)
-cmake -S . -B build && cmake --build build && ctest --test-dir build
-```
-
-## Licence
-
-Apache-2.0. See [LICENSE](LICENSE).
+[Apache-2.0](LICENSE)
