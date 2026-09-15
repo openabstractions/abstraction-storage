@@ -116,6 +116,9 @@ def esc(out, s):
 FAILURE_NAMES = ["read_only", "not_found"]
 
 
+# Reference issued by a Store. Size zero means unknown. Locator is opaque
+# provider binding data; applications must not treat it as path or authority.
+# Only an explicit Local provider projects it to a path.
 class Ref:
     def __init__(self, **kw):
         self.store = kw.get("store", "")
@@ -124,6 +127,8 @@ class Ref:
         self.locator = kw.get("locator", "")
 
 
+# Absent reference means no known match; discovery does not hash bytes. Naming
+# conventions supply evidence and consumers still verify content.
 class FindResult:
     def __init__(self, **kw):
         self.reference = kw.get("reference", None)

@@ -101,14 +101,20 @@ type receiver struct {
 }
 
 func (c receiver) authorization(digest string) string {
-	if c.scope == "" {
+	return decide(c.ctx, c.scope, c.registry.policy, c.peer, digest)
+}
+
+// decide returns "" for an explicit permit, unavailable for a failed decision
+// lookup and forbidden for every evaluated refusal.
+func decide(ctx context.Context, scope string, policy Policy, peer *identity.Peer, digest string) string {
+	if scope == "" {
 		return "forbidden"
 	}
-	if c.ctx.Err() != nil {
+	if ctx.Err() != nil {
 		return "unavailable"
 	}
-	err := c.registry.policy(c.ctx, c.peer, digest)
-	if c.ctx.Err() != nil || errors.Is(err, ErrPolicyUnavailable) {
+	err := policy(ctx, peer, digest)
+	if ctx.Err() != nil || errors.Is(err, ErrPolicyUnavailable) {
 		return "unavailable"
 	}
 	if err != nil {

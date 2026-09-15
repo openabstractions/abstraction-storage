@@ -147,6 +147,24 @@ pub fn esc(out: &mut Vec<u8>, s: &str) {
     out.push(b'"');
 }
 
+pub fn enc_list<T>(out: &mut Vec<u8>, v: &[T], depth: i32, enc: fn(&mut Vec<u8>, &T, i32)) {
+    if v.is_empty() {
+        out.extend_from_slice(b"[]");
+        return;
+    }
+    out.extend_from_slice(b"[\n");
+    for (i, x) in v.iter().enumerate() {
+        pad(out, depth + 1);
+        enc(out, x, depth + 1);
+        if i + 1 < v.len() {
+            out.push(b',');
+        }
+        out.push(b'\n');
+    }
+    pad(out, depth);
+    out.push(b']');
+}
+
 pub const VERIFICATION_NAMES: [&str; 1] = ["unverified"];
 pub const VERIFICATION_UNKNOWN: &str = "refuse";
 
@@ -158,6 +176,30 @@ pub const READOUTCOME_UNKNOWN: &str = "refuse";
 
 pub const CLOSEOUTCOME_NAMES: [&str; 3] = ["closed", "gap", "forbidden"];
 pub const CLOSEOUTCOME_UNKNOWN: &str = "refuse";
+
+pub const BEGINOUTCOME_NAMES: [&str; 11] = ["started", "committed", "present", "forbidden", "invalid", "conflict", "too_large", "busy", "unsupported", "unavailable", "exhausted"];
+pub const BEGINOUTCOME_UNKNOWN: &str = "refuse";
+
+pub const APPENDOUTCOME_NAMES: [&str; 7] = ["accepted", "gap", "forbidden", "invalid", "out_of_order", "too_large", "unavailable"];
+pub const APPENDOUTCOME_UNKNOWN: &str = "refuse";
+
+pub const COMMITOUTCOME_NAMES: [&str; 6] = ["committed", "gap", "forbidden", "incomplete", "mismatch", "unavailable"];
+pub const COMMITOUTCOME_UNKNOWN: &str = "refuse";
+
+pub const ABORTOUTCOME_NAMES: [&str; 3] = ["aborted", "gap", "forbidden"];
+pub const ABORTOUTCOME_UNKNOWN: &str = "refuse";
+
+pub const EVIDENCE_NAMES: [&str; 2] = ["hashed", "named"];
+pub const EVIDENCE_UNKNOWN: &str = "refuse";
+
+pub const CHANGEKIND_NAMES: [&str; 2] = ["added", "removed"];
+pub const CHANGEKIND_UNKNOWN: &str = "refuse";
+
+pub const CHANGEPAGEOUTCOME_NAMES: [&str; 5] = ["page", "gap", "forbidden", "invalid", "unavailable"];
+pub const CHANGEPAGEOUTCOME_UNKNOWN: &str = "refuse";
+
+pub const LISTINGOUTCOME_NAMES: [&str; 5] = ["page", "gap", "forbidden", "invalid", "unavailable"];
+pub const LISTINGOUTCOME_UNKNOWN: &str = "refuse";
 
 #[derive(Default)]
 pub struct Resource {
@@ -193,6 +235,78 @@ pub struct CloseResult {
 }
 
 #[derive(Default)]
+pub struct Upload {
+    pub handle: String,
+    pub digest: String,
+    pub size: i64,
+    pub received: i64,
+}
+
+#[derive(Default)]
+pub struct Stored {
+    pub digest: String,
+    pub size: i64,
+    pub evidence: String,
+}
+
+#[derive(Default)]
+pub struct BeginResult {
+    pub outcome: String,
+    pub upload: Option<Upload>,
+    pub stored: Option<Stored>,
+    pub limit: i64,
+}
+
+#[derive(Default)]
+pub struct AppendResult {
+    pub outcome: String,
+    pub received: i64,
+}
+
+#[derive(Default)]
+pub struct CommitResult {
+    pub outcome: String,
+    pub stored: Option<Stored>,
+    pub received: i64,
+}
+
+#[derive(Default)]
+pub struct AbortResult {
+    pub outcome: String,
+}
+
+#[derive(Default)]
+pub struct Change {
+    pub sequence: i64,
+    pub kind: String,
+    pub digest: String,
+    pub size: i64,
+}
+
+#[derive(Default)]
+pub struct ChangePage {
+    pub outcome: String,
+    pub changes: Vec<Change>,
+    pub next: String,
+    pub at_end: bool,
+}
+
+#[derive(Default)]
+pub struct ListedObject {
+    pub digest: String,
+    pub size: i64,
+}
+
+#[derive(Default)]
+pub struct ListingPage {
+    pub outcome: String,
+    pub objects: Vec<ListedObject>,
+    pub continuation: String,
+    pub complete: bool,
+    pub cursor: String,
+}
+
+#[derive(Default)]
 pub struct OAContentReaderOpenArguments {
     pub digest: String,
 }
@@ -207,6 +321,43 @@ pub struct OAContentReaderReadArguments {
 #[derive(Default)]
 pub struct OAContentReaderCloseArguments {
     pub handle: String,
+}
+
+#[derive(Default)]
+pub struct OAContentWriterBeginArguments {
+    pub request: String,
+    pub digest: String,
+    pub size: i64,
+}
+
+#[derive(Default)]
+pub struct OAContentWriterAppendArguments {
+    pub handle: String,
+    pub offset: i64,
+    pub data: Vec<u8>,
+}
+
+#[derive(Default)]
+pub struct OAContentWriterCommitArguments {
+    pub handle: String,
+}
+
+#[derive(Default)]
+pub struct OAContentWriterAbortArguments {
+    pub handle: String,
+}
+
+#[derive(Default)]
+pub struct OAContentChangesObserveArguments {
+    pub cursor: String,
+    pub max_changes: i64,
+    pub wait_ms: i64,
+}
+
+#[derive(Default)]
+pub struct OAContentChangesListArguments {
+    pub continuation: String,
+    pub limit: i64,
 }
 
 #[derive(Default)]
@@ -245,6 +396,36 @@ pub struct OAContentReaderReadResult {
 #[derive(Default)]
 pub struct OAContentReaderCloseResult {
     pub value: CloseResult,
+}
+
+#[derive(Default)]
+pub struct OAContentWriterBeginResult {
+    pub value: BeginResult,
+}
+
+#[derive(Default)]
+pub struct OAContentWriterAppendResult {
+    pub value: AppendResult,
+}
+
+#[derive(Default)]
+pub struct OAContentWriterCommitResult {
+    pub value: CommitResult,
+}
+
+#[derive(Default)]
+pub struct OAContentWriterAbortResult {
+    pub value: AbortResult,
+}
+
+#[derive(Default)]
+pub struct OAContentChangesObserveResult {
+    pub value: ChangePage,
+}
+
+#[derive(Default)]
+pub struct OAContentChangesListResult {
+    pub value: ListingPage,
 }
 
 pub fn enc_resource(out: &mut Vec<u8>, v: &Resource, depth: i32) {
@@ -363,6 +544,272 @@ pub fn enc_closeresult(out: &mut Vec<u8>, v: &CloseResult, depth: i32) {
     out.push(b'}');
 }
 
+pub fn enc_upload(out: &mut Vec<u8>, v: &Upload, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "handle");
+    out.extend_from_slice(b": ");
+    esc(out, &v.handle);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "digest");
+    out.extend_from_slice(b": ");
+    esc(out, &v.digest);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "size");
+    out.extend_from_slice(b": ");
+    num(out, v.size);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "received");
+    out.extend_from_slice(b": ");
+    num(out, v.received);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_stored(out: &mut Vec<u8>, v: &Stored, depth: i32) {
+    if v.evidence != "hashed" && v.evidence != "named" { std::panic::panic_any(Refusal{word:"bad_enum",offset:0}); }
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "digest");
+    out.extend_from_slice(b": ");
+    esc(out, &v.digest);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "size");
+    out.extend_from_slice(b": ");
+    num(out, v.size);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "evidence");
+    out.extend_from_slice(b": ");
+    esc(out, &v.evidence);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_beginresult(out: &mut Vec<u8>, v: &BeginResult, depth: i32) {
+    if v.outcome != "started" && v.outcome != "committed" && v.outcome != "present" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "conflict" && v.outcome != "too_large" && v.outcome != "busy" && v.outcome != "unsupported" && v.outcome != "unavailable" && v.outcome != "exhausted" { std::panic::panic_any(Refusal{word:"bad_enum",offset:0}); }
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "outcome");
+    out.extend_from_slice(b": ");
+    esc(out, &v.outcome);
+    if v.upload.is_some() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "upload");
+        out.extend_from_slice(b": ");
+        enc_upload(out, v.upload.as_ref().unwrap(), depth + 1);
+    }
+    if v.stored.is_some() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "stored");
+        out.extend_from_slice(b": ");
+        enc_stored(out, v.stored.as_ref().unwrap(), depth + 1);
+    }
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "limit");
+    out.extend_from_slice(b": ");
+    num(out, v.limit);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_appendresult(out: &mut Vec<u8>, v: &AppendResult, depth: i32) {
+    if v.outcome != "accepted" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "out_of_order" && v.outcome != "too_large" && v.outcome != "unavailable" { std::panic::panic_any(Refusal{word:"bad_enum",offset:0}); }
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "outcome");
+    out.extend_from_slice(b": ");
+    esc(out, &v.outcome);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "received");
+    out.extend_from_slice(b": ");
+    num(out, v.received);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_commitresult(out: &mut Vec<u8>, v: &CommitResult, depth: i32) {
+    if v.outcome != "committed" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "incomplete" && v.outcome != "mismatch" && v.outcome != "unavailable" { std::panic::panic_any(Refusal{word:"bad_enum",offset:0}); }
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "outcome");
+    out.extend_from_slice(b": ");
+    esc(out, &v.outcome);
+    if v.stored.is_some() {
+        out.push(b',');
+        out.push(b'\n');
+        pad(out, depth + 1);
+        esc(out, "stored");
+        out.extend_from_slice(b": ");
+        enc_stored(out, v.stored.as_ref().unwrap(), depth + 1);
+    }
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "received");
+    out.extend_from_slice(b": ");
+    num(out, v.received);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_abortresult(out: &mut Vec<u8>, v: &AbortResult, depth: i32) {
+    if v.outcome != "aborted" && v.outcome != "gap" && v.outcome != "forbidden" { std::panic::panic_any(Refusal{word:"bad_enum",offset:0}); }
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "outcome");
+    out.extend_from_slice(b": ");
+    esc(out, &v.outcome);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_change(out: &mut Vec<u8>, v: &Change, depth: i32) {
+    if v.kind != "added" && v.kind != "removed" { std::panic::panic_any(Refusal{word:"bad_enum",offset:0}); }
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "sequence");
+    out.extend_from_slice(b": ");
+    num(out, v.sequence);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "kind");
+    out.extend_from_slice(b": ");
+    esc(out, &v.kind);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "digest");
+    out.extend_from_slice(b": ");
+    esc(out, &v.digest);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "size");
+    out.extend_from_slice(b": ");
+    num(out, v.size);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_changepage(out: &mut Vec<u8>, v: &ChangePage, depth: i32) {
+    if v.outcome != "page" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "unavailable" { std::panic::panic_any(Refusal{word:"bad_enum",offset:0}); }
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "outcome");
+    out.extend_from_slice(b": ");
+    esc(out, &v.outcome);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "changes");
+    out.extend_from_slice(b": ");
+    enc_list(out, &v.changes, depth + 1, enc_change);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "next");
+    out.extend_from_slice(b": ");
+    esc(out, &v.next);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "at_end");
+    out.extend_from_slice(b": ");
+    out.extend_from_slice(if v.at_end { b"true" } else { b"false" });
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_listedobject(out: &mut Vec<u8>, v: &ListedObject, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "digest");
+    out.extend_from_slice(b": ");
+    esc(out, &v.digest);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "size");
+    out.extend_from_slice(b": ");
+    num(out, v.size);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_listingpage(out: &mut Vec<u8>, v: &ListingPage, depth: i32) {
+    if v.outcome != "page" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "unavailable" { std::panic::panic_any(Refusal{word:"bad_enum",offset:0}); }
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "outcome");
+    out.extend_from_slice(b": ");
+    esc(out, &v.outcome);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "objects");
+    out.extend_from_slice(b": ");
+    enc_list(out, &v.objects, depth + 1, enc_listedobject);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "continuation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.continuation);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "complete");
+    out.extend_from_slice(b": ");
+    out.extend_from_slice(if v.complete { b"true" } else { b"false" });
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "cursor");
+    out.extend_from_slice(b": ");
+    esc(out, &v.cursor);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
 pub fn enc_oacontentreaderopenarguments(out: &mut Vec<u8>, v: &OAContentReaderOpenArguments, depth: i32) {
     out.push(b'{');
     out.push(b'\n');
@@ -406,6 +853,120 @@ pub fn enc_oacontentreaderclosearguments(out: &mut Vec<u8>, v: &OAContentReaderC
     esc(out, "handle");
     out.extend_from_slice(b": ");
     esc(out, &v.handle);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentwriterbeginarguments(out: &mut Vec<u8>, v: &OAContentWriterBeginArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "request");
+    out.extend_from_slice(b": ");
+    esc(out, &v.request);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "digest");
+    out.extend_from_slice(b": ");
+    esc(out, &v.digest);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "size");
+    out.extend_from_slice(b": ");
+    num(out, v.size);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentwriterappendarguments(out: &mut Vec<u8>, v: &OAContentWriterAppendArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "handle");
+    out.extend_from_slice(b": ");
+    esc(out, &v.handle);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "offset");
+    out.extend_from_slice(b": ");
+    num(out, v.offset);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "data");
+    out.extend_from_slice(b": ");
+    esc(out, &encode_binary(&v.data));
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentwritercommitarguments(out: &mut Vec<u8>, v: &OAContentWriterCommitArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "handle");
+    out.extend_from_slice(b": ");
+    esc(out, &v.handle);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentwriterabortarguments(out: &mut Vec<u8>, v: &OAContentWriterAbortArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "handle");
+    out.extend_from_slice(b": ");
+    esc(out, &v.handle);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentchangesobservearguments(out: &mut Vec<u8>, v: &OAContentChangesObserveArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "cursor");
+    out.extend_from_slice(b": ");
+    esc(out, &v.cursor);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "max_changes");
+    out.extend_from_slice(b": ");
+    num(out, v.max_changes);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "wait_ms");
+    out.extend_from_slice(b": ");
+    num(out, v.wait_ms);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentchangeslistarguments(out: &mut Vec<u8>, v: &OAContentChangesListArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "continuation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.continuation);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "limit");
+    out.extend_from_slice(b": ");
+    num(out, v.limit);
     out.push(b'\n');
     pad(out, depth);
     out.push(b'}');
@@ -526,6 +1087,78 @@ pub fn enc_oacontentreadercloseresult(out: &mut Vec<u8>, v: &OAContentReaderClos
     esc(out, "value");
     out.extend_from_slice(b": ");
     enc_closeresult(out, &v.value, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentwriterbeginresult(out: &mut Vec<u8>, v: &OAContentWriterBeginResult, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "value");
+    out.extend_from_slice(b": ");
+    enc_beginresult(out, &v.value, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentwriterappendresult(out: &mut Vec<u8>, v: &OAContentWriterAppendResult, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "value");
+    out.extend_from_slice(b": ");
+    enc_appendresult(out, &v.value, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentwritercommitresult(out: &mut Vec<u8>, v: &OAContentWriterCommitResult, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "value");
+    out.extend_from_slice(b": ");
+    enc_commitresult(out, &v.value, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentwriterabortresult(out: &mut Vec<u8>, v: &OAContentWriterAbortResult, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "value");
+    out.extend_from_slice(b": ");
+    enc_abortresult(out, &v.value, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentchangesobserveresult(out: &mut Vec<u8>, v: &OAContentChangesObserveResult, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "value");
+    out.extend_from_slice(b": ");
+    enc_changepage(out, &v.value, depth + 1);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+pub fn enc_oacontentchangeslistresult(out: &mut Vec<u8>, v: &OAContentChangesListResult, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "value");
+    out.extend_from_slice(b": ");
+    enc_listingpage(out, &v.value, depth + 1);
     out.push(b'\n');
     pad(out, depth);
     out.push(b'}');
@@ -940,6 +1573,36 @@ impl<'a> Reader<'a> {
     }
 }
 
+fn decode_list<T>(
+    r: &mut Reader,
+    elem: fn(&mut Reader) -> Result<T, Refusal>,
+) -> Result<Vec<T>, Refusal> {
+    if r.at() != b'[' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut out = Vec::new();
+    r.skip_ws();
+    if r.at() != b']' {
+        loop {
+            r.skip_ws();
+            out.push(elem(r)?);
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b']' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    Ok(out)
+}
+
 fn encode_binary(value: &[u8]) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
@@ -1308,6 +1971,688 @@ fn decode_closeresult(r: &mut Reader) -> Result<CloseResult, Refusal> {
     Ok(v)
 }
 
+fn decode_upload(r: &mut Reader) -> Result<Upload, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = Upload::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "handle" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.handle = r.string()?;
+                }
+                "digest" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.digest = r.string()?;
+                }
+                "size" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.size = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "received" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    v.received = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 15 != 15 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_stored(r: &mut Reader) -> Result<Stored, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = Stored::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "digest" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.digest = r.string()?;
+                }
+                "size" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.size = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "evidence" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.evidence = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 7 != 7 {
+        return r.refuse("missing_field");
+    }
+    if v.evidence != "hashed" && v.evidence != "named" { return r.refuse("bad_enum"); }
+    Ok(v)
+}
+
+fn decode_beginresult(r: &mut Reader) -> Result<BeginResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = BeginResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.outcome = r.string()?;
+                }
+                "upload" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.upload = Some(decode_upload(r)?);
+                }
+                "stored" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.stored = Some(decode_stored(r)?);
+                }
+                "limit" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    v.limit = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 9 != 9 {
+        return r.refuse("missing_field");
+    }
+    if v.outcome != "started" && v.outcome != "committed" && v.outcome != "present" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "conflict" && v.outcome != "too_large" && v.outcome != "busy" && v.outcome != "unsupported" && v.outcome != "unavailable" && v.outcome != "exhausted" { return r.refuse("bad_enum"); }
+    Ok(v)
+}
+
+fn decode_appendresult(r: &mut Reader) -> Result<AppendResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = AppendResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.outcome = r.string()?;
+                }
+                "received" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.received = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
+        return r.refuse("missing_field");
+    }
+    if v.outcome != "accepted" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "out_of_order" && v.outcome != "too_large" && v.outcome != "unavailable" { return r.refuse("bad_enum"); }
+    Ok(v)
+}
+
+fn decode_commitresult(r: &mut Reader) -> Result<CommitResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = CommitResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.outcome = r.string()?;
+                }
+                "stored" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.stored = Some(decode_stored(r)?);
+                }
+                "received" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.received = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 5 != 5 {
+        return r.refuse("missing_field");
+    }
+    if v.outcome != "committed" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "incomplete" && v.outcome != "mismatch" && v.outcome != "unavailable" { return r.refuse("bad_enum"); }
+    Ok(v)
+}
+
+fn decode_abortresult(r: &mut Reader) -> Result<AbortResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = AbortResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.outcome = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    if v.outcome != "aborted" && v.outcome != "gap" && v.outcome != "forbidden" { return r.refuse("bad_enum"); }
+    Ok(v)
+}
+
+fn decode_change(r: &mut Reader) -> Result<Change, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = Change::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "sequence" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.sequence = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "kind" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.kind = r.string()?;
+                }
+                "digest" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.digest = r.string()?;
+                }
+                "size" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    v.size = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 15 != 15 {
+        return r.refuse("missing_field");
+    }
+    if v.kind != "added" && v.kind != "removed" { return r.refuse("bad_enum"); }
+    Ok(v)
+}
+
+fn decode_changepage(r: &mut Reader) -> Result<ChangePage, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = ChangePage::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.outcome = r.string()?;
+                }
+                "changes" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.changes = decode_list(r, decode_change)?;
+                }
+                "next" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.next = r.string()?;
+                }
+                "at_end" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    v.at_end = r.boolean()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 15 != 15 {
+        return r.refuse("missing_field");
+    }
+    if v.outcome != "page" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "unavailable" { return r.refuse("bad_enum"); }
+    Ok(v)
+}
+
+fn decode_listedobject(r: &mut Reader) -> Result<ListedObject, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = ListedObject::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "digest" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.digest = r.string()?;
+                }
+                "size" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.size = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_listingpage(r: &mut Reader) -> Result<ListingPage, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = ListingPage::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "outcome" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.outcome = r.string()?;
+                }
+                "objects" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.objects = decode_list(r, decode_listedobject)?;
+                }
+                "continuation" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.continuation = r.string()?;
+                }
+                "complete" => {
+                    if seen & 8 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 8;
+                    v.complete = r.boolean()?;
+                }
+                "cursor" => {
+                    if seen & 16 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 16;
+                    v.cursor = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 31 != 31 {
+        return r.refuse("missing_field");
+    }
+    if v.outcome != "page" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "unavailable" { return r.refuse("bad_enum"); }
+    Ok(v)
+}
+
 fn decode_oacontentreaderopenarguments(r: &mut Reader) -> Result<OAContentReaderOpenArguments, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -1473,6 +2818,367 @@ fn decode_oacontentreaderclosearguments(r: &mut Reader) -> Result<OAContentReade
     r.pos += 1;
     r.depth -= 1;
     if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentwriterbeginarguments(r: &mut Reader) -> Result<OAContentWriterBeginArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentWriterBeginArguments::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "request" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.request = r.string()?;
+                }
+                "digest" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.digest = r.string()?;
+                }
+                "size" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.size = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 7 != 7 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentwriterappendarguments(r: &mut Reader) -> Result<OAContentWriterAppendArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentWriterAppendArguments::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "handle" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.handle = r.string()?;
+                }
+                "offset" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.offset = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "data" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.data = read_binary(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 7 != 7 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentwritercommitarguments(r: &mut Reader) -> Result<OAContentWriterCommitArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentWriterCommitArguments::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "handle" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.handle = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentwriterabortarguments(r: &mut Reader) -> Result<OAContentWriterAbortArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentWriterAbortArguments::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "handle" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.handle = r.string()?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentchangesobservearguments(r: &mut Reader) -> Result<OAContentChangesObserveArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentChangesObserveArguments::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "cursor" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.cursor = r.string()?;
+                }
+                "max_changes" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.max_changes = r.integer(i64::MIN, i64::MAX)?;
+                }
+                "wait_ms" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    v.wait_ms = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 7 != 7 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentchangeslistarguments(r: &mut Reader) -> Result<OAContentChangesListArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentChangesListArguments::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "continuation" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.continuation = r.string()?;
+                }
+                "limit" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    v.limit = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 3 != 3 {
         return r.refuse("missing_field");
     }
     Ok(v)
@@ -1846,6 +3552,318 @@ fn decode_oacontentreadercloseresult(r: &mut Reader) -> Result<OAContentReaderCl
     Ok(v)
 }
 
+fn decode_oacontentwriterbeginresult(r: &mut Reader) -> Result<OAContentWriterBeginResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentWriterBeginResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.value = decode_beginresult(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentwriterappendresult(r: &mut Reader) -> Result<OAContentWriterAppendResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentWriterAppendResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.value = decode_appendresult(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentwritercommitresult(r: &mut Reader) -> Result<OAContentWriterCommitResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentWriterCommitResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.value = decode_commitresult(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentwriterabortresult(r: &mut Reader) -> Result<OAContentWriterAbortResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentWriterAbortResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.value = decode_abortresult(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentchangesobserveresult(r: &mut Reader) -> Result<OAContentChangesObserveResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentChangesObserveResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.value = decode_changepage(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
+fn decode_oacontentchangeslistresult(r: &mut Reader) -> Result<OAContentChangesListResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut v = OAContentChangesListResult::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    v.value = decode_listingpage(r)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    Ok(v)
+}
+
 pub fn decode(data: &[u8]) -> Result<OpenResult, Refusal> {
     let mut r = Reader { buf: data, pos: 0, depth: 0 };
     r.skip_ws();
@@ -1904,6 +3922,79 @@ fn service_check_closeresult(v: &CloseResult) -> Result<(), Refusal> {
 }
 
 #[allow(unused_variables)]
+fn service_check_upload(v: &Upload) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_stored(v: &Stored) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    if v.evidence != "hashed" && v.evidence != "named" { return r.refuse("bad_enum"); }
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_beginresult(v: &BeginResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    if v.outcome != "started" && v.outcome != "committed" && v.outcome != "present" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "conflict" && v.outcome != "too_large" && v.outcome != "busy" && v.outcome != "unsupported" && v.outcome != "unavailable" && v.outcome != "exhausted" { return r.refuse("bad_enum"); }
+    if let Some(value) = &v.upload { service_check_upload(value)?; }
+    if let Some(value) = &v.stored { service_check_stored(value)?; }
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_appendresult(v: &AppendResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    if v.outcome != "accepted" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "out_of_order" && v.outcome != "too_large" && v.outcome != "unavailable" { return r.refuse("bad_enum"); }
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_commitresult(v: &CommitResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    if v.outcome != "committed" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "incomplete" && v.outcome != "mismatch" && v.outcome != "unavailable" { return r.refuse("bad_enum"); }
+    if let Some(value) = &v.stored { service_check_stored(value)?; }
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_abortresult(v: &AbortResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    if v.outcome != "aborted" && v.outcome != "gap" && v.outcome != "forbidden" { return r.refuse("bad_enum"); }
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_change(v: &Change) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    if v.kind != "added" && v.kind != "removed" { return r.refuse("bad_enum"); }
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_changepage(v: &ChangePage) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    if v.outcome != "page" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "unavailable" { return r.refuse("bad_enum"); }
+    for value in &v.changes { service_check_change(value)?; }
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_listedobject(v: &ListedObject) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_listingpage(v: &ListingPage) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    if v.outcome != "page" && v.outcome != "gap" && v.outcome != "forbidden" && v.outcome != "invalid" && v.outcome != "unavailable" { return r.refuse("bad_enum"); }
+    for value in &v.objects { service_check_listedobject(value)?; }
+    Ok(())
+}
+
+#[allow(unused_variables)]
 fn service_check_oacontentreaderopenarguments(v: &OAContentReaderOpenArguments) -> Result<(), Refusal> {
     let r = Reader { buf: &[], pos: 0, depth: 0 };
     Ok(())
@@ -1917,6 +4008,42 @@ fn service_check_oacontentreaderreadarguments(v: &OAContentReaderReadArguments) 
 
 #[allow(unused_variables)]
 fn service_check_oacontentreaderclosearguments(v: &OAContentReaderCloseArguments) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentwriterbeginarguments(v: &OAContentWriterBeginArguments) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentwriterappendarguments(v: &OAContentWriterAppendArguments) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentwritercommitarguments(v: &OAContentWriterCommitArguments) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentwriterabortarguments(v: &OAContentWriterAbortArguments) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentchangesobservearguments(v: &OAContentChangesObserveArguments) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentchangeslistarguments(v: &OAContentChangesListArguments) -> Result<(), Refusal> {
     let r = Reader { buf: &[], pos: 0, depth: 0 };
     Ok(())
 }
@@ -1957,6 +4084,48 @@ fn service_check_oacontentreaderreadresult(v: &OAContentReaderReadResult) -> Res
 fn service_check_oacontentreadercloseresult(v: &OAContentReaderCloseResult) -> Result<(), Refusal> {
     let r = Reader { buf: &[], pos: 0, depth: 0 };
     service_check_closeresult(&v.value)?;
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentwriterbeginresult(v: &OAContentWriterBeginResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    service_check_beginresult(&v.value)?;
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentwriterappendresult(v: &OAContentWriterAppendResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    service_check_appendresult(&v.value)?;
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentwritercommitresult(v: &OAContentWriterCommitResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    service_check_commitresult(&v.value)?;
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentwriterabortresult(v: &OAContentWriterAbortResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    service_check_abortresult(&v.value)?;
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentchangesobserveresult(v: &OAContentChangesObserveResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    service_check_changepage(&v.value)?;
+    Ok(())
+}
+
+#[allow(unused_variables)]
+fn service_check_oacontentchangeslistresult(v: &OAContentChangesListResult) -> Result<(), Refusal> {
+    let r = Reader { buf: &[], pos: 0, depth: 0 };
+    service_check_listingpage(&v.value)?;
     Ok(())
 }
 
@@ -2054,6 +4223,144 @@ impl<T: FrameTransport> ContentReader for ContentReaderClient<T> {
             return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
         }
         let result = service_decode(&reply.payload, decode_oacontentreadercloseresult).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+}
+
+#[allow(non_snake_case)]
+pub trait ContentWriter {
+    type Error;
+    fn Begin(&self, arg0: String, arg1: String, arg2: i64) -> Result<BeginResult, Self::Error>;
+    fn Append(&self, arg0: String, arg1: i64, arg2: Vec<u8>) -> Result<AppendResult, Self::Error>;
+    fn Commit(&self, arg0: String) -> Result<CommitResult, Self::Error>;
+    fn Abort(&self, arg0: String) -> Result<AbortResult, Self::Error>;
+}
+
+pub struct ContentWriterClient<T> { transport: T }
+impl<T> ContentWriterClient<T> {
+    pub fn new(transport: T) -> Self { Self { transport } }
+    pub fn transport(&self) -> &T { &self.transport }
+}
+#[allow(non_snake_case)]
+impl<T: FrameTransport> ContentWriter for ContentWriterClient<T> {
+    type Error = CallError<T::Error>;
+    fn Begin(&self, arg0: String, arg1: String, arg2: i64) -> Result<BeginResult, Self::Error> {
+        let args = OAContentWriterBeginArguments { request: arg0, digest: arg1, size: arg2, };
+        let arguments = service_encode(&args, service_check_oacontentwriterbeginarguments, enc_oacontentwriterbeginarguments, decode_oacontentwriterbeginarguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.storage/content-writer@1".into(), method: "Begin".into(), arguments };
+        let frame = service_encode(&request, service_check_oaserviceframe, enc_oaserviceframe, decode_oaserviceframe).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oaservicereply).map_err(CallError::Refusal)?;
+        if reply.version != 1 { return Err(CallError::Dispatch("unknown_version")); }
+        if reply.service != "abstraction.storage/content-writer@1" || reply.method != "Begin" { return Err(CallError::Dispatch("mismatched_response")); }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oaserviceerror).map_err(CallError::Refusal)?;
+            if error.code.is_empty() { return Err(CallError::Dispatch("invalid_error")); }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oacontentwriterbeginresult).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+    fn Append(&self, arg0: String, arg1: i64, arg2: Vec<u8>) -> Result<AppendResult, Self::Error> {
+        let args = OAContentWriterAppendArguments { handle: arg0, offset: arg1, data: arg2, };
+        let arguments = service_encode(&args, service_check_oacontentwriterappendarguments, enc_oacontentwriterappendarguments, decode_oacontentwriterappendarguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.storage/content-writer@1".into(), method: "Append".into(), arguments };
+        let frame = service_encode(&request, service_check_oaserviceframe, enc_oaserviceframe, decode_oaserviceframe).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oaservicereply).map_err(CallError::Refusal)?;
+        if reply.version != 1 { return Err(CallError::Dispatch("unknown_version")); }
+        if reply.service != "abstraction.storage/content-writer@1" || reply.method != "Append" { return Err(CallError::Dispatch("mismatched_response")); }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oaserviceerror).map_err(CallError::Refusal)?;
+            if error.code.is_empty() { return Err(CallError::Dispatch("invalid_error")); }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oacontentwriterappendresult).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+    fn Commit(&self, arg0: String) -> Result<CommitResult, Self::Error> {
+        let args = OAContentWriterCommitArguments { handle: arg0, };
+        let arguments = service_encode(&args, service_check_oacontentwritercommitarguments, enc_oacontentwritercommitarguments, decode_oacontentwritercommitarguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.storage/content-writer@1".into(), method: "Commit".into(), arguments };
+        let frame = service_encode(&request, service_check_oaserviceframe, enc_oaserviceframe, decode_oaserviceframe).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oaservicereply).map_err(CallError::Refusal)?;
+        if reply.version != 1 { return Err(CallError::Dispatch("unknown_version")); }
+        if reply.service != "abstraction.storage/content-writer@1" || reply.method != "Commit" { return Err(CallError::Dispatch("mismatched_response")); }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oaserviceerror).map_err(CallError::Refusal)?;
+            if error.code.is_empty() { return Err(CallError::Dispatch("invalid_error")); }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oacontentwritercommitresult).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+    fn Abort(&self, arg0: String) -> Result<AbortResult, Self::Error> {
+        let args = OAContentWriterAbortArguments { handle: arg0, };
+        let arguments = service_encode(&args, service_check_oacontentwriterabortarguments, enc_oacontentwriterabortarguments, decode_oacontentwriterabortarguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.storage/content-writer@1".into(), method: "Abort".into(), arguments };
+        let frame = service_encode(&request, service_check_oaserviceframe, enc_oaserviceframe, decode_oaserviceframe).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oaservicereply).map_err(CallError::Refusal)?;
+        if reply.version != 1 { return Err(CallError::Dispatch("unknown_version")); }
+        if reply.service != "abstraction.storage/content-writer@1" || reply.method != "Abort" { return Err(CallError::Dispatch("mismatched_response")); }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oaserviceerror).map_err(CallError::Refusal)?;
+            if error.code.is_empty() { return Err(CallError::Dispatch("invalid_error")); }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oacontentwriterabortresult).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+}
+
+#[allow(non_snake_case)]
+pub trait ContentChanges {
+    type Error;
+    fn Observe(&self, arg0: String, arg1: i64, arg2: i64) -> Result<ChangePage, Self::Error>;
+    fn List(&self, arg0: String, arg1: i64) -> Result<ListingPage, Self::Error>;
+}
+
+pub struct ContentChangesClient<T> { transport: T }
+impl<T> ContentChangesClient<T> {
+    pub fn new(transport: T) -> Self { Self { transport } }
+    pub fn transport(&self) -> &T { &self.transport }
+}
+#[allow(non_snake_case)]
+impl<T: FrameTransport> ContentChanges for ContentChangesClient<T> {
+    type Error = CallError<T::Error>;
+    fn Observe(&self, arg0: String, arg1: i64, arg2: i64) -> Result<ChangePage, Self::Error> {
+        let args = OAContentChangesObserveArguments { cursor: arg0, max_changes: arg1, wait_ms: arg2, };
+        let arguments = service_encode(&args, service_check_oacontentchangesobservearguments, enc_oacontentchangesobservearguments, decode_oacontentchangesobservearguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.storage/content-changes@1".into(), method: "Observe".into(), arguments };
+        let frame = service_encode(&request, service_check_oaserviceframe, enc_oaserviceframe, decode_oaserviceframe).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oaservicereply).map_err(CallError::Refusal)?;
+        if reply.version != 1 { return Err(CallError::Dispatch("unknown_version")); }
+        if reply.service != "abstraction.storage/content-changes@1" || reply.method != "Observe" { return Err(CallError::Dispatch("mismatched_response")); }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oaserviceerror).map_err(CallError::Refusal)?;
+            if error.code.is_empty() { return Err(CallError::Dispatch("invalid_error")); }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oacontentchangesobserveresult).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+    fn List(&self, arg0: String, arg1: i64) -> Result<ListingPage, Self::Error> {
+        let args = OAContentChangesListArguments { continuation: arg0, limit: arg1, };
+        let arguments = service_encode(&args, service_check_oacontentchangeslistarguments, enc_oacontentchangeslistarguments, decode_oacontentchangeslistarguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.storage/content-changes@1".into(), method: "List".into(), arguments };
+        let frame = service_encode(&request, service_check_oaserviceframe, enc_oaserviceframe, decode_oaserviceframe).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oaservicereply).map_err(CallError::Refusal)?;
+        if reply.version != 1 { return Err(CallError::Dispatch("unknown_version")); }
+        if reply.service != "abstraction.storage/content-changes@1" || reply.method != "List" { return Err(CallError::Dispatch("mismatched_response")); }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oaserviceerror).map_err(CallError::Refusal)?;
+            if error.code.is_empty() { return Err(CallError::Dispatch("invalid_error")); }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oacontentchangeslistresult).map_err(CallError::Refusal)?;
         Ok(result.value)
     }
 }

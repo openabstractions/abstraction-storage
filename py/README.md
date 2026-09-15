@@ -8,6 +8,15 @@ streams at most 64 KiB per request under one total wait budget and reports parti
 confirmed writes through CopyError. A cancelled wait leaves the resource open;
 Close remains explicit and is permitted after authorization revocation.
 
+`Machine().resolve_storage_writer(scope="local")` selects the separate content
+writer. `Begin`, `Append`, `Commit` and `Abort` validate inputs before any
+exchange and check result consistency; write authorization remains the
+service's decision. `Write(request, digest, data)` uploads at most 64 KiB per
+append under one total wait budget and raises OutcomeError on a non-success
+outcome. Keep the request identity from `new_request_id()`: retrying the same
+identity resumes a live upload or returns its committed result, and Write never
+aborts.
+
 Resources contain opaque handles, naming digests and observed sizes. Content is
 unverified; verify the assembled digest. A gap requires explicit reopen. The
 client reads no provider files and performs no automatic fallback. The legacy

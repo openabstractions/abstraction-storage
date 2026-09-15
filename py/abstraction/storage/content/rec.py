@@ -113,6 +113,21 @@ def esc(out, s):
     out += b'"'
 
 
+def enc_list(out, v, depth, enc):
+    if not v:
+        out += b"[]"
+        return
+    out += b"[\n"
+    for i, x in enumerate(v):
+        pad(out, depth + 1)
+        enc(out, x, depth + 1)
+        if i + 1 < len(v):
+            out += b","
+        out += b"\n"
+    pad(out, depth)
+    out += b"]"
+
+
 VERIFICATION_NAMES = ["unverified"]
 VERIFICATION_UNKNOWN = "refuse"
 
@@ -129,6 +144,43 @@ CLOSEOUTCOME_NAMES = ["closed", "gap", "forbidden"]
 CLOSEOUTCOME_UNKNOWN = "refuse"
 
 
+BEGINOUTCOME_NAMES = ["started", "committed", "present", "forbidden", "invalid", "conflict", "too_large", "busy", "unsupported", "unavailable", "exhausted"]
+BEGINOUTCOME_UNKNOWN = "refuse"
+
+
+APPENDOUTCOME_NAMES = ["accepted", "gap", "forbidden", "invalid", "out_of_order", "too_large", "unavailable"]
+APPENDOUTCOME_UNKNOWN = "refuse"
+
+
+COMMITOUTCOME_NAMES = ["committed", "gap", "forbidden", "incomplete", "mismatch", "unavailable"]
+COMMITOUTCOME_UNKNOWN = "refuse"
+
+
+ABORTOUTCOME_NAMES = ["aborted", "gap", "forbidden"]
+ABORTOUTCOME_UNKNOWN = "refuse"
+
+
+EVIDENCE_NAMES = ["hashed", "named"]
+EVIDENCE_UNKNOWN = "refuse"
+
+
+CHANGEKIND_NAMES = ["added", "removed"]
+CHANGEKIND_UNKNOWN = "refuse"
+
+
+CHANGEPAGEOUTCOME_NAMES = ["page", "gap", "forbidden", "invalid", "unavailable"]
+CHANGEPAGEOUTCOME_UNKNOWN = "refuse"
+
+
+LISTINGOUTCOME_NAMES = ["page", "gap", "forbidden", "invalid", "unavailable"]
+LISTINGOUTCOME_UNKNOWN = "refuse"
+
+
+# Opaque resource bound to receiving account and observed program and provider
+# lifetime. Digest is the requested canonical sha256 naming key, not a verified
+# hash. Size is observed and nonnegative. Verification is always unverified;
+# consumer verifies assembled bytes. No private path or immutable-snapshot
+# claim.
 class Resource:
     def __init__(self, **kw):
         self.handle = kw.get("handle", "")
@@ -137,12 +189,17 @@ class Resource:
         self.verification = kw.get("verification", "")
 
 
+# Resource present exactly for opened. Authorization precedes lookup. not_found
+# means no known match, not global absence.
 class OpenResult:
     def __init__(self, **kw):
         self.outcome = kw.get("outcome", "")
         self.resource = kw.get("resource", None)
 
 
+# Offset equals requested offset; total equals issued resource size. Length at
+# most max_bytes and offset+length at most total. eof iff offset+length equals
+# total. Non-EOF data is nonempty. Error/absence never means EOF.
 class Chunk:
     def __init__(self, **kw):
         self.offset = kw.get("offset", 0)
@@ -151,6 +208,9 @@ class Chunk:
         self.eof = kw.get("eof", False)
 
 
+# Chunk present exactly for data. changed reports observed mutation and
+# invalidates resource; discard assembly and explicitly reopen. Mutation
+# detection is advisory; verify completed bytes.
 class ReadResult:
     def __init__(self, **kw):
         self.outcome = kw.get("outcome", "")
@@ -160,6 +220,106 @@ class ReadResult:
 class CloseResult:
     def __init__(self, **kw):
         self.outcome = kw.get("outcome", "")
+
+
+# Opaque staged upload bound to the receiving account/program scope and provider
+# lifetime. Size is the declared total; received counts bytes accepted in order.
+# Staged bytes are never findable or readable.
+class Upload:
+    def __init__(self, **kw):
+        self.handle = kw.get("handle", "")
+        self.digest = kw.get("digest", "")
+        self.size = kw.get("size", 0)
+        self.received = kw.get("received", 0)
+
+
+# hashed: the service hashed every byte it accepted into staging, the hash
+# equals digest, and the provider committed that staged object. named: an
+# existing provider naming match was found without hashing; size zero means
+# unknown.
+class Stored:
+    def __init__(self, **kw):
+        self.digest = kw.get("digest", "")
+        self.size = kw.get("size", 0)
+        self.evidence = kw.get("evidence", "")
+
+
+# upload present exactly for started. stored present exactly for committed and
+# present. limit is the provider's maximum declared size for evaluated outcomes,
+# and zero for forbidden, invalid and unavailable.
+class BeginResult:
+    def __init__(self, **kw):
+        self.outcome = kw.get("outcome", "")
+        self.upload = kw.get("upload", None)
+        self.stored = kw.get("stored", None)
+        self.limit = kw.get("limit", 0)
+
+
+# For accepted, out_of_order and too_large, received is the next offset the
+# service accepts. Other outcomes carry zero.
+class AppendResult:
+    def __init__(self, **kw):
+        self.outcome = kw.get("outcome", "")
+        self.received = kw.get("received", 0)
+
+
+# stored present exactly for committed with hashed evidence. For incomplete,
+# received is the next accepted offset. Other outcomes carry zero.
+class CommitResult:
+    def __init__(self, **kw):
+        self.outcome = kw.get("outcome", "")
+        self.stored = kw.get("stored", None)
+        self.received = kw.get("received", 0)
+
+
+class AbortResult:
+    def __init__(self, **kw):
+        self.outcome = kw.get("outcome", "")
+
+
+# One observed change in provider journal order. Sequence increases within one
+# provider epoch. Digest is a canonical sha256 naming key, not verified content.
+# Size is observed; zero means unknown. A notice grants no access.
+class Change:
+    def __init__(self, **kw):
+        self.sequence = kw.get("sequence", 0)
+        self.kind = kw.get("kind", "")
+        self.digest = kw.get("digest", "")
+        self.size = kw.get("size", 0)
+
+
+# page carries at most max_changes entries the caller may read and a next
+# cursor. next advances past every entry examined, including entries the caller
+# may not read, which are omitted without a count. at_end means the journal end
+# was reached during this call. Refusals carry no changes, an unchanged cursor
+# and at_end false. gap requires restarting from List.
+class ChangePage:
+    def __init__(self, **kw):
+        self.outcome = kw.get("outcome", "")
+        self.changes = kw.get("changes", [])
+        self.next = kw.get("next", "")
+        self.at_end = kw.get("at_end", False)
+
+
+class ListedObject:
+    def __init__(self, **kw):
+        self.digest = kw.get("digest", "")
+        self.size = kw.get("size", 0)
+
+
+# page carries at most limit objects the caller may read, in digest order, from
+# one frozen snapshot. cursor is the change cursor at which that snapshot was
+# taken and is identical on every page of it; Observe from it reports every
+# later change. complete means the snapshot is exhausted; otherwise continuation
+# is nonempty. Objects the caller may not read are omitted without a count.
+# Refusals carry no objects, empty continuation and cursor, and complete false.
+class ListingPage:
+    def __init__(self, **kw):
+        self.outcome = kw.get("outcome", "")
+        self.objects = kw.get("objects", [])
+        self.continuation = kw.get("continuation", "")
+        self.complete = kw.get("complete", False)
+        self.cursor = kw.get("cursor", "")
 
 
 class OAContentReaderOpenArguments:
@@ -177,6 +337,43 @@ class OAContentReaderReadArguments:
 class OAContentReaderCloseArguments:
     def __init__(self, **kw):
         self.handle = kw.get("handle", "")
+
+
+class OAContentWriterBeginArguments:
+    def __init__(self, **kw):
+        self.request = kw.get("request", "")
+        self.digest = kw.get("digest", "")
+        self.size = kw.get("size", 0)
+
+
+class OAContentWriterAppendArguments:
+    def __init__(self, **kw):
+        self.handle = kw.get("handle", "")
+        self.offset = kw.get("offset", 0)
+        self.data = kw.get("data", b"")
+
+
+class OAContentWriterCommitArguments:
+    def __init__(self, **kw):
+        self.handle = kw.get("handle", "")
+
+
+class OAContentWriterAbortArguments:
+    def __init__(self, **kw):
+        self.handle = kw.get("handle", "")
+
+
+class OAContentChangesObserveArguments:
+    def __init__(self, **kw):
+        self.cursor = kw.get("cursor", "")
+        self.max_changes = kw.get("max_changes", 0)
+        self.wait_ms = kw.get("wait_ms", 0)
+
+
+class OAContentChangesListArguments:
+    def __init__(self, **kw):
+        self.continuation = kw.get("continuation", "")
+        self.limit = kw.get("limit", 0)
 
 
 class OAServiceFrame:
@@ -215,6 +412,36 @@ class OAContentReaderReadResult:
 class OAContentReaderCloseResult:
     def __init__(self, **kw):
         self.value = kw.get("value", CloseResult())
+
+
+class OAContentWriterBeginResult:
+    def __init__(self, **kw):
+        self.value = kw.get("value", BeginResult())
+
+
+class OAContentWriterAppendResult:
+    def __init__(self, **kw):
+        self.value = kw.get("value", AppendResult())
+
+
+class OAContentWriterCommitResult:
+    def __init__(self, **kw):
+        self.value = kw.get("value", CommitResult())
+
+
+class OAContentWriterAbortResult:
+    def __init__(self, **kw):
+        self.value = kw.get("value", AbortResult())
+
+
+class OAContentChangesObserveResult:
+    def __init__(self, **kw):
+        self.value = kw.get("value", ChangePage())
+
+
+class OAContentChangesListResult:
+    def __init__(self, **kw):
+        self.value = kw.get("value", ListingPage())
 
 
 def enc_resource(out, v, depth):
@@ -335,6 +562,277 @@ def enc_closeresult(out, v, depth):
     out += b"}"
 
 
+def enc_upload(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "handle")
+    out += b": "
+    esc(out, v.handle)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "digest")
+    out += b": "
+    esc(out, v.digest)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "size")
+    out += b": "
+    num(out, v.size)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "received")
+    out += b": "
+    num(out, v.received)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_stored(out, v, depth):
+    if type(v.evidence) is not str: raise Refusal("wrong_type",0)
+    if v.evidence != "hashed" and v.evidence != "named": raise Refusal("bad_enum",0)
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "digest")
+    out += b": "
+    esc(out, v.digest)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "size")
+    out += b": "
+    num(out, v.size)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "evidence")
+    out += b": "
+    esc(out, v.evidence)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_beginresult(out, v, depth):
+    if type(v.outcome) is not str: raise Refusal("wrong_type",0)
+    if v.outcome != "started" and v.outcome != "committed" and v.outcome != "present" and v.outcome != "forbidden" and v.outcome != "invalid" and v.outcome != "conflict" and v.outcome != "too_large" and v.outcome != "busy" and v.outcome != "unsupported" and v.outcome != "unavailable" and v.outcome != "exhausted": raise Refusal("bad_enum",0)
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "outcome")
+    out += b": "
+    esc(out, v.outcome)
+    if v.upload is not None:
+        out += b","
+        out += b"\n"
+        pad(out, depth + 1)
+        esc(out, "upload")
+        out += b": "
+        enc_upload(out, v.upload, depth + 1)
+    if v.stored is not None:
+        out += b","
+        out += b"\n"
+        pad(out, depth + 1)
+        esc(out, "stored")
+        out += b": "
+        enc_stored(out, v.stored, depth + 1)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "limit")
+    out += b": "
+    num(out, v.limit)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_appendresult(out, v, depth):
+    if type(v.outcome) is not str: raise Refusal("wrong_type",0)
+    if v.outcome != "accepted" and v.outcome != "gap" and v.outcome != "forbidden" and v.outcome != "invalid" and v.outcome != "out_of_order" and v.outcome != "too_large" and v.outcome != "unavailable": raise Refusal("bad_enum",0)
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "outcome")
+    out += b": "
+    esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "received")
+    out += b": "
+    num(out, v.received)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_commitresult(out, v, depth):
+    if type(v.outcome) is not str: raise Refusal("wrong_type",0)
+    if v.outcome != "committed" and v.outcome != "gap" and v.outcome != "forbidden" and v.outcome != "incomplete" and v.outcome != "mismatch" and v.outcome != "unavailable": raise Refusal("bad_enum",0)
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "outcome")
+    out += b": "
+    esc(out, v.outcome)
+    if v.stored is not None:
+        out += b","
+        out += b"\n"
+        pad(out, depth + 1)
+        esc(out, "stored")
+        out += b": "
+        enc_stored(out, v.stored, depth + 1)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "received")
+    out += b": "
+    num(out, v.received)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_abortresult(out, v, depth):
+    if type(v.outcome) is not str: raise Refusal("wrong_type",0)
+    if v.outcome != "aborted" and v.outcome != "gap" and v.outcome != "forbidden": raise Refusal("bad_enum",0)
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "outcome")
+    out += b": "
+    esc(out, v.outcome)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_change(out, v, depth):
+    if type(v.kind) is not str: raise Refusal("wrong_type",0)
+    if v.kind != "added" and v.kind != "removed": raise Refusal("bad_enum",0)
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "sequence")
+    out += b": "
+    num(out, v.sequence)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "kind")
+    out += b": "
+    esc(out, v.kind)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "digest")
+    out += b": "
+    esc(out, v.digest)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "size")
+    out += b": "
+    num(out, v.size)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_changepage(out, v, depth):
+    if type(v.outcome) is not str: raise Refusal("wrong_type",0)
+    if v.outcome != "page" and v.outcome != "gap" and v.outcome != "forbidden" and v.outcome != "invalid" and v.outcome != "unavailable": raise Refusal("bad_enum",0)
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "outcome")
+    out += b": "
+    esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "changes")
+    out += b": "
+    enc_list(out, v.changes, depth + 1, enc_change)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "next")
+    out += b": "
+    esc(out, v.next)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "at_end")
+    out += b": "
+    out += b"true" if v.at_end else b"false"
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_listedobject(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "digest")
+    out += b": "
+    esc(out, v.digest)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "size")
+    out += b": "
+    num(out, v.size)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_listingpage(out, v, depth):
+    if type(v.outcome) is not str: raise Refusal("wrong_type",0)
+    if v.outcome != "page" and v.outcome != "gap" and v.outcome != "forbidden" and v.outcome != "invalid" and v.outcome != "unavailable": raise Refusal("bad_enum",0)
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "outcome")
+    out += b": "
+    esc(out, v.outcome)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "objects")
+    out += b": "
+    enc_list(out, v.objects, depth + 1, enc_listedobject)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "continuation")
+    out += b": "
+    esc(out, v.continuation)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "complete")
+    out += b": "
+    out += b"true" if v.complete else b"false"
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "cursor")
+    out += b": "
+    esc(out, v.cursor)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
 def enc_oacontentreaderopenarguments(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -378,6 +876,120 @@ def enc_oacontentreaderclosearguments(out, v, depth):
     esc(out, "handle")
     out += b": "
     esc(out, v.handle)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentwriterbeginarguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "request")
+    out += b": "
+    esc(out, v.request)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "digest")
+    out += b": "
+    esc(out, v.digest)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "size")
+    out += b": "
+    num(out, v.size)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentwriterappendarguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "handle")
+    out += b": "
+    esc(out, v.handle)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "offset")
+    out += b": "
+    num(out, v.offset)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "data")
+    out += b": "
+    esc(out, _encode_binary(v.data))
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentwritercommitarguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "handle")
+    out += b": "
+    esc(out, v.handle)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentwriterabortarguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "handle")
+    out += b": "
+    esc(out, v.handle)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentchangesobservearguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "cursor")
+    out += b": "
+    esc(out, v.cursor)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "max_changes")
+    out += b": "
+    num(out, v.max_changes)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "wait_ms")
+    out += b": "
+    num(out, v.wait_ms)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentchangeslistarguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "continuation")
+    out += b": "
+    esc(out, v.continuation)
+    out += b","
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "limit")
+    out += b": "
+    num(out, v.limit)
     out += b"\n"
     pad(out, depth)
     out += b"}"
@@ -498,6 +1110,78 @@ def enc_oacontentreadercloseresult(out, v, depth):
     esc(out, "value")
     out += b": "
     enc_closeresult(out, v.value, depth + 1)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentwriterbeginresult(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "value")
+    out += b": "
+    enc_beginresult(out, v.value, depth + 1)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentwriterappendresult(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "value")
+    out += b": "
+    enc_appendresult(out, v.value, depth + 1)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentwritercommitresult(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "value")
+    out += b": "
+    enc_commitresult(out, v.value, depth + 1)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentwriterabortresult(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "value")
+    out += b": "
+    enc_abortresult(out, v.value, depth + 1)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentchangesobserveresult(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "value")
+    out += b": "
+    enc_changepage(out, v.value, depth + 1)
+    out += b"\n"
+    pad(out, depth)
+    out += b"}"
+
+
+def enc_oacontentchangeslistresult(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    pad(out, depth + 1)
+    esc(out, "value")
+    out += b": "
+    enc_listingpage(out, v.value, depth + 1)
     out += b"\n"
     pad(out, depth)
     out += b"}"
@@ -804,6 +1488,28 @@ class _Reader:
         self.depth -= 1
 
 
+def _decode_list(r, elem):
+    if r.at() != _LBRACK:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    out = []
+    r.ws()
+    if r.at() != _RBRACK:
+        while True:
+            r.ws()
+            out.append(elem(r))
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACK:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    return out
+
+
 def _decode_resource(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -1043,6 +1749,514 @@ def _decode_closeresult(r):
     return v
 
 
+def _decode_upload(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = Upload()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "handle":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.handle = r.string()
+            elif key == "digest":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.digest = r.string()
+            elif key == "size":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.size = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "received":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.received = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 15 != 15:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_stored(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = Stored()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "digest":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.digest = r.string()
+            elif key == "size":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.size = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "evidence":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.evidence = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    if v.evidence != "hashed" and v.evidence != "named": raise r.refuse("bad_enum")
+    return v
+
+
+def _decode_beginresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = BeginResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "upload":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.upload = _decode_upload(r)
+            elif key == "stored":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.stored = _decode_stored(r)
+            elif key == "limit":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.limit = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 9 != 9:
+        raise r.refuse("missing_field")
+    if v.outcome != "started" and v.outcome != "committed" and v.outcome != "present" and v.outcome != "forbidden" and v.outcome != "invalid" and v.outcome != "conflict" and v.outcome != "too_large" and v.outcome != "busy" and v.outcome != "unsupported" and v.outcome != "unavailable" and v.outcome != "exhausted": raise r.refuse("bad_enum")
+    return v
+
+
+def _decode_appendresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = AppendResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "received":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.received = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    if v.outcome != "accepted" and v.outcome != "gap" and v.outcome != "forbidden" and v.outcome != "invalid" and v.outcome != "out_of_order" and v.outcome != "too_large" and v.outcome != "unavailable": raise r.refuse("bad_enum")
+    return v
+
+
+def _decode_commitresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = CommitResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "stored":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.stored = _decode_stored(r)
+            elif key == "received":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.received = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 5 != 5:
+        raise r.refuse("missing_field")
+    if v.outcome != "committed" and v.outcome != "gap" and v.outcome != "forbidden" and v.outcome != "incomplete" and v.outcome != "mismatch" and v.outcome != "unavailable": raise r.refuse("bad_enum")
+    return v
+
+
+def _decode_abortresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = AbortResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    if v.outcome != "aborted" and v.outcome != "gap" and v.outcome != "forbidden": raise r.refuse("bad_enum")
+    return v
+
+
+def _decode_change(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = Change()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "sequence":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.sequence = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "kind":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.kind = r.string()
+            elif key == "digest":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.digest = r.string()
+            elif key == "size":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.size = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 15 != 15:
+        raise r.refuse("missing_field")
+    if v.kind != "added" and v.kind != "removed": raise r.refuse("bad_enum")
+    return v
+
+
+def _decode_changepage(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ChangePage()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "changes":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.changes = _decode_list(r, _decode_change)
+            elif key == "next":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.next = r.string()
+            elif key == "at_end":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.at_end = r.boolean()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 15 != 15:
+        raise r.refuse("missing_field")
+    if v.outcome != "page" and v.outcome != "gap" and v.outcome != "forbidden" and v.outcome != "invalid" and v.outcome != "unavailable": raise r.refuse("bad_enum")
+    return v
+
+
+def _decode_listedobject(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ListedObject()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "digest":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.digest = r.string()
+            elif key == "size":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.size = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_listingpage(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = ListingPage()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "outcome":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.outcome = r.string()
+            elif key == "objects":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.objects = _decode_list(r, _decode_listedobject)
+            elif key == "continuation":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.continuation = r.string()
+            elif key == "complete":
+                if seen & 8:
+                    raise r.refuse("duplicate_field")
+                seen |= 8
+                v.complete = r.boolean()
+            elif key == "cursor":
+                if seen & 16:
+                    raise r.refuse("duplicate_field")
+                seen |= 16
+                v.cursor = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 31 != 31:
+        raise r.refuse("missing_field")
+    if v.outcome != "page" and v.outcome != "gap" and v.outcome != "forbidden" and v.outcome != "invalid" and v.outcome != "unavailable": raise r.refuse("bad_enum")
+    return v
+
+
 def _decode_oacontentreaderopenarguments(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -1166,6 +2380,275 @@ def _decode_oacontentreaderclosearguments(r):
     r.pos += 1
     r.depth -= 1
     if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentwriterbeginarguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentWriterBeginArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "request":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.request = r.string()
+            elif key == "digest":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.digest = r.string()
+            elif key == "size":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.size = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentwriterappendarguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentWriterAppendArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "handle":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.handle = r.string()
+            elif key == "offset":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.offset = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "data":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.data = _decode_binary(r.string())
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentwritercommitarguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentWriterCommitArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "handle":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.handle = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentwriterabortarguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentWriterAbortArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "handle":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.handle = r.string()
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentchangesobservearguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentChangesObserveArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "cursor":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.cursor = r.string()
+            elif key == "max_changes":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.max_changes = r.integer(-9223372036854775808, 9223372036854775807)
+            elif key == "wait_ms":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.wait_ms = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentchangeslistarguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentChangesListArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "continuation":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.continuation = r.string()
+            elif key == "limit":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.limit = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 3 != 3:
         raise r.refuse("missing_field")
     return v
 
@@ -1444,6 +2927,240 @@ def _decode_oacontentreadercloseresult(r):
     return v
 
 
+def _decode_oacontentwriterbeginresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentWriterBeginResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _decode_beginresult(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentwriterappendresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentWriterAppendResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _decode_appendresult(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentwritercommitresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentWriterCommitResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _decode_commitresult(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentwriterabortresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentWriterAbortResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _decode_abortresult(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentchangesobserveresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentChangesObserveResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _decode_changepage(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
+def _decode_oacontentchangeslistresult(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = OAContentChangesListResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _decode_listingpage(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def decode(data):
     r = _Reader(bytes(data))
     r.ws()
@@ -1577,6 +3294,14 @@ def _service_check(kind, value, depth=0):
     if not valid:
         raise Refusal("wrong_type", 0)
 
+def service_name(frame):
+    """Validate envelope/version for routing; dispatchers validate typed arguments."""
+    value = _service_decode(_decode_oaserviceframe, frame)
+    if value.version != 1:
+        raise DispatchError("unknown_version")
+    return value.service
+
+
 
 class ServiceError(Exception):
     def __init__(self, code, message=""):
@@ -1604,20 +3329,42 @@ _SERVICE_RECORDS = {
     "Chunk": (Chunk, [("offset","i64","never"),("total","i64","never"),("data","binary","never"),("eof","bool","never"),]),
     "ReadResult": (ReadResult, [("outcome","string","never"),("chunk","Chunk","absent"),]),
     "CloseResult": (CloseResult, [("outcome","string","never"),]),
+    "Upload": (Upload, [("handle","string","never"),("digest","string","never"),("size","i64","never"),("received","i64","never"),]),
+    "Stored": (Stored, [("digest","string","never"),("size","i64","never"),("evidence","string","never"),]),
+    "BeginResult": (BeginResult, [("outcome","string","never"),("upload","Upload","absent"),("stored","Stored","absent"),("limit","i64","never"),]),
+    "AppendResult": (AppendResult, [("outcome","string","never"),("received","i64","never"),]),
+    "CommitResult": (CommitResult, [("outcome","string","never"),("stored","Stored","absent"),("received","i64","never"),]),
+    "AbortResult": (AbortResult, [("outcome","string","never"),]),
+    "Change": (Change, [("sequence","i64","never"),("kind","string","never"),("digest","string","never"),("size","i64","never"),]),
+    "ChangePage": (ChangePage, [("outcome","string","never"),("changes","list<Change>","never"),("next","string","never"),("at_end","bool","never"),]),
+    "ListedObject": (ListedObject, [("digest","string","never"),("size","i64","never"),]),
+    "ListingPage": (ListingPage, [("outcome","string","never"),("objects","list<ListedObject>","never"),("continuation","string","never"),("complete","bool","never"),("cursor","string","never"),]),
     "OAContentReaderOpenArguments": (OAContentReaderOpenArguments, [("digest","string","never"),]),
     "OAContentReaderReadArguments": (OAContentReaderReadArguments, [("handle","string","never"),("offset","i64","never"),("max_bytes","i64","never"),]),
     "OAContentReaderCloseArguments": (OAContentReaderCloseArguments, [("handle","string","never"),]),
+    "OAContentWriterBeginArguments": (OAContentWriterBeginArguments, [("request","string","never"),("digest","string","never"),("size","i64","never"),]),
+    "OAContentWriterAppendArguments": (OAContentWriterAppendArguments, [("handle","string","never"),("offset","i64","never"),("data","binary","never"),]),
+    "OAContentWriterCommitArguments": (OAContentWriterCommitArguments, [("handle","string","never"),]),
+    "OAContentWriterAbortArguments": (OAContentWriterAbortArguments, [("handle","string","never"),]),
+    "OAContentChangesObserveArguments": (OAContentChangesObserveArguments, [("cursor","string","never"),("max_changes","i64","never"),("wait_ms","i64","never"),]),
+    "OAContentChangesListArguments": (OAContentChangesListArguments, [("continuation","string","never"),("limit","i64","never"),]),
     "OAServiceFrame": (OAServiceFrame, [("version","i32","never"),("service","string","never"),("method","string","never"),("arguments","json","never"),]),
     "OAServiceReply": (OAServiceReply, [("version","i32","never"),("service","string","never"),("method","string","never"),("ok","bool","never"),("payload","json","never"),]),
     "OAServiceError": (OAServiceError, [("code","string","never"),("message","string","never"),]),
     "OAContentReaderOpenResult": (OAContentReaderOpenResult, [("value","OpenResult","never"),]),
     "OAContentReaderReadResult": (OAContentReaderReadResult, [("value","ReadResult","never"),]),
     "OAContentReaderCloseResult": (OAContentReaderCloseResult, [("value","CloseResult","never"),]),
+    "OAContentWriterBeginResult": (OAContentWriterBeginResult, [("value","BeginResult","never"),]),
+    "OAContentWriterAppendResult": (OAContentWriterAppendResult, [("value","AppendResult","never"),]),
+    "OAContentWriterCommitResult": (OAContentWriterCommitResult, [("value","CommitResult","never"),]),
+    "OAContentWriterAbortResult": (OAContentWriterAbortResult, [("value","AbortResult","never"),]),
+    "OAContentChangesObserveResult": (OAContentChangesObserveResult, [("value","ChangePage","never"),]),
+    "OAContentChangesListResult": (OAContentChangesListResult, [("value","ListingPage","never"),]),
 }
 
 
 class ContentReader:
-    __doc__ = "Read-only bounded access through configured native Store+Local adapters. Naming lookup is unverified; unsupported providers refuse. No writable Place/Commit projection. Callbacks are trusted provider code required to honor bounded execution/context."
+    __doc__ = "Read-only bounded access through configured native Store+Local adapters. Naming lookup is unverified; unsupported providers refuse. Writes use the separate content-writer profile. Callbacks are trusted provider code required to honor bounded execution/context."
     def Open(self, digest: "str") -> "OpenResult":
         raise NotImplementedError
     def Read(self, handle: "str", offset: "int", max_bytes: "int") -> "ReadResult":
@@ -1665,4 +3412,114 @@ class ContentReaderClient(ContentReader):
         _oa_request = _service_request("abstraction.storage/content-reader@1", "Close", _oa_arguments)
         _oa_payload = _service_response(self._transport.exchange_frame(_oa_request), "abstraction.storage/content-reader@1", "Close")
         _oa_result = _service_decode(_decode_oacontentreadercloseresult, _oa_payload, 1)
+        return _oa_result.value
+
+
+class ContentWriter:
+    __doc__ = "Bounded authorized writes through configured native Store+Local+Writable adapters. Uploads idle for 30 seconds expire and are discarded. Committed request records are retained for 10 minutes within one provider lifetime. Provider shutdown discards staged uploads."
+    def Begin(self, request: "str", digest: "str", size: "int") -> "BeginResult":
+        raise NotImplementedError
+    def Append(self, handle: "str", offset: "int", data: "bytes") -> "AppendResult":
+        raise NotImplementedError
+    def Commit(self, handle: "str") -> "CommitResult":
+        raise NotImplementedError
+    def Abort(self, handle: "str") -> "AbortResult":
+        raise NotImplementedError
+
+
+class ContentWriterClient(ContentWriter):
+    def __init__(self, transport):
+        self._transport = transport
+
+    def Begin(self, request: "str", digest: "str", size: "int") -> "BeginResult":
+        _service_check("string", request)
+        _service_check("string", digest)
+        _service_check("i64", size)
+        _oa_args = OAContentWriterBeginArguments()
+        _oa_args.request = request
+        _oa_args.digest = digest
+        _oa_args.size = size
+        _oa_arguments = _service_encode(enc_oacontentwriterbeginarguments, _oa_args, 1)
+        _service_decode(_decode_oacontentwriterbeginarguments, _oa_arguments, 1)
+        _oa_request = _service_request("abstraction.storage/content-writer@1", "Begin", _oa_arguments)
+        _oa_payload = _service_response(self._transport.exchange_frame(_oa_request), "abstraction.storage/content-writer@1", "Begin")
+        _oa_result = _service_decode(_decode_oacontentwriterbeginresult, _oa_payload, 1)
+        return _oa_result.value
+
+    def Append(self, handle: "str", offset: "int", data: "bytes") -> "AppendResult":
+        _service_check("string", handle)
+        _service_check("i64", offset)
+        _service_check("binary", data)
+        _oa_args = OAContentWriterAppendArguments()
+        _oa_args.handle = handle
+        _oa_args.offset = offset
+        _oa_args.data = data
+        _oa_arguments = _service_encode(enc_oacontentwriterappendarguments, _oa_args, 1)
+        _service_decode(_decode_oacontentwriterappendarguments, _oa_arguments, 1)
+        _oa_request = _service_request("abstraction.storage/content-writer@1", "Append", _oa_arguments)
+        _oa_payload = _service_response(self._transport.exchange_frame(_oa_request), "abstraction.storage/content-writer@1", "Append")
+        _oa_result = _service_decode(_decode_oacontentwriterappendresult, _oa_payload, 1)
+        return _oa_result.value
+
+    def Commit(self, handle: "str") -> "CommitResult":
+        _service_check("string", handle)
+        _oa_args = OAContentWriterCommitArguments()
+        _oa_args.handle = handle
+        _oa_arguments = _service_encode(enc_oacontentwritercommitarguments, _oa_args, 1)
+        _service_decode(_decode_oacontentwritercommitarguments, _oa_arguments, 1)
+        _oa_request = _service_request("abstraction.storage/content-writer@1", "Commit", _oa_arguments)
+        _oa_payload = _service_response(self._transport.exchange_frame(_oa_request), "abstraction.storage/content-writer@1", "Commit")
+        _oa_result = _service_decode(_decode_oacontentwritercommitresult, _oa_payload, 1)
+        return _oa_result.value
+
+    def Abort(self, handle: "str") -> "AbortResult":
+        _service_check("string", handle)
+        _oa_args = OAContentWriterAbortArguments()
+        _oa_args.handle = handle
+        _oa_arguments = _service_encode(enc_oacontentwriterabortarguments, _oa_args, 1)
+        _service_decode(_decode_oacontentwriterabortarguments, _oa_arguments, 1)
+        _oa_request = _service_request("abstraction.storage/content-writer@1", "Abort", _oa_arguments)
+        _oa_payload = _service_response(self._transport.exchange_frame(_oa_request), "abstraction.storage/content-writer@1", "Abort")
+        _oa_result = _service_decode(_decode_oacontentwriterabortresult, _oa_payload, 1)
+        return _oa_result.value
+
+
+class ContentChanges:
+    __doc__ = "Bounded authorized observation of objects a content store gains or loses. The provider journal retains a bounded number of recent changes per lifetime with no per-subscriber queue; a subscriber that falls behind receives gap and rebuilds from List. Service-mediated commits are journaled when they publish. External additions and deletions are journaled when the provider's optional listing capability is polled; changes that cancel out between polls are not reported. removed currently reports only external deletions, because the service has no delete operation. A provider restart starts a new epoch."
+    def Observe(self, cursor: "str", max_changes: "int", wait_ms: "int") -> "ChangePage":
+        raise NotImplementedError
+    def List(self, continuation: "str", limit: "int") -> "ListingPage":
+        raise NotImplementedError
+
+
+class ContentChangesClient(ContentChanges):
+    def __init__(self, transport):
+        self._transport = transport
+
+    def Observe(self, cursor: "str", max_changes: "int", wait_ms: "int") -> "ChangePage":
+        _service_check("string", cursor)
+        _service_check("i64", max_changes)
+        _service_check("i64", wait_ms)
+        _oa_args = OAContentChangesObserveArguments()
+        _oa_args.cursor = cursor
+        _oa_args.max_changes = max_changes
+        _oa_args.wait_ms = wait_ms
+        _oa_arguments = _service_encode(enc_oacontentchangesobservearguments, _oa_args, 1)
+        _service_decode(_decode_oacontentchangesobservearguments, _oa_arguments, 1)
+        _oa_request = _service_request("abstraction.storage/content-changes@1", "Observe", _oa_arguments)
+        _oa_payload = _service_response(self._transport.exchange_frame(_oa_request), "abstraction.storage/content-changes@1", "Observe")
+        _oa_result = _service_decode(_decode_oacontentchangesobserveresult, _oa_payload, 1)
+        return _oa_result.value
+
+    def List(self, continuation: "str", limit: "int") -> "ListingPage":
+        _service_check("string", continuation)
+        _service_check("i64", limit)
+        _oa_args = OAContentChangesListArguments()
+        _oa_args.continuation = continuation
+        _oa_args.limit = limit
+        _oa_arguments = _service_encode(enc_oacontentchangeslistarguments, _oa_args, 1)
+        _service_decode(_decode_oacontentchangeslistarguments, _oa_arguments, 1)
+        _oa_request = _service_request("abstraction.storage/content-changes@1", "List", _oa_arguments)
+        _oa_payload = _service_response(self._transport.exchange_frame(_oa_request), "abstraction.storage/content-changes@1", "List")
+        _oa_result = _service_decode(_decode_oacontentchangeslistresult, _oa_payload, 1)
         return _oa_result.value

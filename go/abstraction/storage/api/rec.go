@@ -189,6 +189,9 @@ func esc(out []byte, s string) []byte {
 
 var FailureNames = []string{"read_only", "not_found"}
 
+// Reference issued by a Store. Size zero means unknown. Locator is opaque
+// provider binding data; applications must not treat it as path or authority.
+// Only an explicit Local provider projects it to a path.
 type Ref struct {
 	Store   string
 	Digest  string
@@ -196,6 +199,8 @@ type Ref struct {
 	Locator string
 }
 
+// Absent reference means no known match; discovery does not hash bytes. Naming
+// conventions supply evidence and consumers still verify content.
 type FindResult struct {
 	Reference *Ref
 }

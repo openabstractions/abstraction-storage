@@ -134,6 +134,9 @@ inline void esc(std::string& out, const std::string& s) {
 
 inline const std::vector<std::string> kFailureNames = {"read_only", "not_found"};
 
+// Reference issued by a Store. Size zero means unknown. Locator is opaque
+// provider binding data; applications must not treat it as path or authority.
+// Only an explicit Local provider projects it to a path.
 struct Ref {
     std::string store;
     std::string digest;
@@ -141,6 +144,8 @@ struct Ref {
     std::string locator;
 };
 
+// Absent reference means no known match; discovery does not hash bytes. Naming
+// conventions supply evidence and consumers still verify content.
 struct FindResult {
     std::optional<Ref> reference;
 };

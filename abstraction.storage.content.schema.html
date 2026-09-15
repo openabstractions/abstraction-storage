@@ -30,8 +30,9 @@
 <div class="wrap"><table>
 <thead><tr><th>kind</th><th>types</th></tr></thead>
 <tbody>
-<tr><td>built in</td><td><code>CloseOutcome</code> <code>OpenOutcome</code> <code>ReadOutcome</code> <code>Verification</code> <code>binary</code> <code>bool</code> <code>i64</code> <code>string</code></td></tr>
-<tr><td>declared below</td><td><code>Chunk</code> <code>Resource</code></td></tr>
+<tr><td>built in</td><td><code>AbortOutcome</code> <code>AppendOutcome</code> <code>BeginOutcome</code> <code>ChangeKind</code> <code>ChangePageOutcome</code> <code>CloseOutcome</code> <code>CommitOutcome</code> <code>Evidence</code> <code>ListingOutcome</code> <code>OpenOutcome</code> <code>ReadOutcome</code> <code>Verification</code> <code>binary</code> <code>bool</code> <code>i64</code> <code>string</code></td></tr>
+<tr><td>declared below</td><td><code>Chunk</code> <code>Resource</code> <code>Stored</code> <code>Upload</code></td></tr>
+<tr><td>repeated record <span class="tag">[DEF-A9]</span></td><td><code>list&lt;Change&gt;</code> <code>list&lt;ListedObject&gt;</code></td></tr>
 </tbody></table></div>
 <h2 id="structs">Structs <span class="tag">[DEF-T1]</span></h2>
 <p class="meta">A field is required, or says when it is omitted <span class="tag">[DEF-A4]</span>. Each struct says on its own what it does with a field name it has never heard of <span class="tag">[DEF-A7]</span>. A wire name never moves; where a language must spell it differently the field says so <span class="tag">[DEF-A2]</span>.</p>
@@ -78,6 +79,98 @@
 <tbody>
 <tr><td>1</td><td><code>outcome</code></td><td><code>CloseOutcome</code></td><td>required</td><td>—</td></tr>
 </tbody></table></div>
+<h3 id="struct-Upload"><code>Upload</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>handle</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>digest</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>size</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>received</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Stored"><code>Stored</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>digest</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>size</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>evidence</code></td><td><code>Evidence</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-BeginResult"><code>BeginResult</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>BeginOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>upload</code></td><td><code>Upload</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>3</td><td><code>stored</code></td><td><code>Stored</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>4</td><td><code>limit</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-AppendResult"><code>AppendResult</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>AppendOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>received</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-CommitResult"><code>CommitResult</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>CommitOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>stored</code></td><td><code>Stored</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>3</td><td><code>received</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-AbortResult"><code>AbortResult</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>AbortOutcome</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-Change"><code>Change</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>sequence</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>kind</code></td><td><code>ChangeKind</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>digest</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>size</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ChangePage"><code>ChangePage</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ChangePageOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>changes</code></td><td><code>list&lt;Change&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>next</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>at_end</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ListedObject"><code>ListedObject</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>digest</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>size</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-ListingPage"><code>ListingPage</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>ListingOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>objects</code></td><td><code>list&lt;ListedObject&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>continuation</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>complete</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>cursor</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
 <h2 id="enums">Enumerations <span class="tag">[DEF-T5]</span></h2>
 <p>Enum fields carry JSON strings containing exact member names, never numeric IDs. Unknown names are preserved with grant and refused as bad_enum with refuse on read and write. Optional absent fields preserve presence separately from an empty string.</p>
 <p class="meta">An enumeration is a closed vocabulary of wire names, and each one says on its own what a reader does with a member it has never heard of <span class="tag">[DEF-A5]</span>.</p>
@@ -122,6 +215,95 @@
 <tr><td>2</td><td><code>gap</code></td></tr>
 <tr><td>3</td><td><code>forbidden</code></td></tr>
 </tbody></table></div>
+<h3 id="enum-BeginOutcome"><code>BeginOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>started</code></td></tr>
+<tr><td>2</td><td><code>committed</code></td></tr>
+<tr><td>3</td><td><code>present</code></td></tr>
+<tr><td>4</td><td><code>forbidden</code></td></tr>
+<tr><td>5</td><td><code>invalid</code></td></tr>
+<tr><td>6</td><td><code>conflict</code></td></tr>
+<tr><td>7</td><td><code>too_large</code></td></tr>
+<tr><td>8</td><td><code>busy</code></td></tr>
+<tr><td>9</td><td><code>unsupported</code></td></tr>
+<tr><td>10</td><td><code>unavailable</code></td></tr>
+<tr><td>11</td><td><code>exhausted</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-AppendOutcome"><code>AppendOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>accepted</code></td></tr>
+<tr><td>2</td><td><code>gap</code></td></tr>
+<tr><td>3</td><td><code>forbidden</code></td></tr>
+<tr><td>4</td><td><code>invalid</code></td></tr>
+<tr><td>5</td><td><code>out_of_order</code></td></tr>
+<tr><td>6</td><td><code>too_large</code></td></tr>
+<tr><td>7</td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-CommitOutcome"><code>CommitOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>committed</code></td></tr>
+<tr><td>2</td><td><code>gap</code></td></tr>
+<tr><td>3</td><td><code>forbidden</code></td></tr>
+<tr><td>4</td><td><code>incomplete</code></td></tr>
+<tr><td>5</td><td><code>mismatch</code></td></tr>
+<tr><td>6</td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-AbortOutcome"><code>AbortOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>aborted</code></td></tr>
+<tr><td>2</td><td><code>gap</code></td></tr>
+<tr><td>3</td><td><code>forbidden</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-Evidence"><code>Evidence</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>hashed</code></td></tr>
+<tr><td>2</td><td><code>named</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChangeKind"><code>ChangeKind</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>added</code></td></tr>
+<tr><td>2</td><td><code>removed</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ChangePageOutcome"><code>ChangePageOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>page</code></td></tr>
+<tr><td>2</td><td><code>gap</code></td></tr>
+<tr><td>3</td><td><code>forbidden</code></td></tr>
+<tr><td>4</td><td><code>invalid</code></td></tr>
+<tr><td>5</td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-ListingOutcome"><code>ListingOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>page</code></td></tr>
+<tr><td>2</td><td><code>gap</code></td></tr>
+<tr><td>3</td><td><code>forbidden</code></td></tr>
+<tr><td>4</td><td><code>invalid</code></td></tr>
+<tr><td>5</td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
 <h2 id="refusals">Refusal words <span class="tag">[DEF-R1]</span></h2>
 <div class="wrap"><table>
 <thead><tr><th>order</th><th>word</th><th>stage</th></tr></thead>
@@ -140,8 +322,9 @@
 <tr><td>12</td><td><code>trailing_bytes</code></td><td><code>document</code></td></tr>
 </tbody></table></div>
 <h2 id="service-ContentReader">Service <code>ContentReader</code> <span class="tag">[DEF-S1]</span></h2>
-<p>Read-only bounded access through configured native Store+Local adapters. Naming lookup is unverified; unsupported providers refuse. No writable Place/Commit projection. Callbacks are trusted provider code required to honor bounded execution/context.</p>
+<p>Read-only bounded access through configured native Store+Local adapters. Naming lookup is unverified; unsupported providers refuse. Writes use the separate content-writer profile. Callbacks are trusted provider code required to honor bounded execution/context.</p>
 <p>Wire identity: <code>abstraction.storage/content-reader@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Canonical sha256: plus 64 lowercase hexadecimal digits. Explicit content policy required; same-account identity alone grants no content permission. At most 32 resources globally and 8 per scope; 30 seconds idle expires.</p>
@@ -157,6 +340,49 @@
 <p>Release own scoped resource even after content authorization revocation. Provider shutdown closes all owned resources.</p>
 <h3><code>Close</code></h3><p><code>request-response</code> <code>CloseResult</code></p><ul>
 <li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-ContentWriter">Service <code>ContentWriter</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Bounded authorized writes through configured native Store+Local+Writable adapters. Uploads idle for 30 seconds expire and are discarded. Committed request records are retained for 10 minutes within one provider lifetime. Provider shutdown discards staged uploads.</p>
+<p>Wire identity: <code>abstraction.storage/content-writer@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>request is a caller-retained identity of 16..128 characters from A-Z a-z 0-9 _ -, scoped to the receiving account/program. digest is canonical sha256; size is the declared total, 0..limit. Write authorization precedes every lookup and provider effect. The same request with the same digest and size returns its live upload or committed result; different digest or size is conflict. present reports an existing naming match. busy reports another live upload of the same digest. At most 16 uploads globally, 4 per scope and 256 request records.</p>
+<h3><code>Begin</code></h3><p><code>request-response</code> <code>BeginResult</code></p><ul>
+<li>Argument 1: <code>string</code> <code>request</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>string</code> <code>digest</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>size</code> (required, including zero/false/empty)</li>
+</ul>
+<p>data is 1..65536 bytes at offset equal to received. Authority rechecked before bytes are staged. A different offset stages nothing and returns out_of_order with received. Bytes beyond the declared size stage nothing and return too_large. Unknown/expired/aborted/restarted uploads give gap; another scope&#39;s upload gives forbidden.</p>
+<h3><code>Append</code></h3><p><code>request-response</code> <code>AppendResult</code></p><ul>
+<li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>offset</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>binary</code> <code>data</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Authority rechecked before visibility. Requires received equal to size and the staged bytes to hash to digest; mismatch discards the upload. Visibility changes in one provider commit step; readers observe no partial content.</p>
+<h3><code>Commit</code></h3><p><code>request-response</code> <code>CommitResult</code></p><ul>
+<li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Discard own staged upload and its request record, including after write authorization revocation.</p>
+<h3><code>Abort</code></h3><p><code>request-response</code> <code>AbortResult</code></p><ul>
+<li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="service-ContentChanges">Service <code>ContentChanges</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Bounded authorized observation of objects a content store gains or loses. The provider journal retains a bounded number of recent changes per lifetime with no per-subscriber queue; a subscriber that falls behind receives gap and rebuilds from List. Service-mediated commits are journaled when they publish. External additions and deletions are journaled when the provider&#39;s optional listing capability is polled; changes that cancel out between polls are not reported. removed currently reports only external deletions, because the service has no delete operation. A provider restart starts a new epoch.</p>
+<p>Wire identity: <code>abstraction.storage/content-changes@1</code></p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Empty cursor starts at the current journal end. Cursors are at most 256 bytes and bind provider epoch and sequence. A cursor from another epoch or older than the retained journal returns gap. max_changes is 1..256; wait_ms is 0..30000 and waits at the current end for an append, then rereads once. Observe authorization is checked on every call and rechecked after a wait; each entry is filtered through the read policy for its digest. A read decision outage returns unavailable without advancing. Bounded waiter exhaustion returns unavailable.</p>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>ChangePage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>cursor</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>max_changes</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Empty continuation freezes a new snapshot of the provider&#39;s known objects and its change cursor. limit is 1..256. Continuations are at most 256 bytes and name a retained snapshot; an unknown, expired or restarted snapshot returns gap. At most 8 snapshots are retained, each for 30 idle seconds; exhaustion returns unavailable. Observe authorization and per-object read filtering apply as for Observe.</p>
+<h3><code>List</code></h3><p><code>request-response</code> <code>ListingPage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
 </ul>
 
 <footer>

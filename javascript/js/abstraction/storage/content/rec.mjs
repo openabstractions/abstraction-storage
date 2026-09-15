@@ -152,6 +152,19 @@ function readBinary(r) {
   return result;
 }
 
+export function encList(out, v, depth, enc) {
+  if (v.length === 0) { out.ascii("[]"); return; }
+  out.ascii("[\n");
+  for (let i = 0; i < v.length; i++) {
+    pad(out, depth + 1);
+    enc(out, v[i], depth + 1);
+    if (i + 1 < v.length) out.byte(0x2c);
+    out.byte(0x0a);
+  }
+  pad(out, depth);
+  out.byte(0x5d);
+}
+
 export const VerificationNames = ["unverified"];
 export const VerificationUnknown = "refuse";
 
@@ -163,6 +176,30 @@ export const ReadOutcomeUnknown = "refuse";
 
 export const CloseOutcomeNames = ["closed", "gap", "forbidden"];
 export const CloseOutcomeUnknown = "refuse";
+
+export const BeginOutcomeNames = ["started", "committed", "present", "forbidden", "invalid", "conflict", "too_large", "busy", "unsupported", "unavailable", "exhausted"];
+export const BeginOutcomeUnknown = "refuse";
+
+export const AppendOutcomeNames = ["accepted", "gap", "forbidden", "invalid", "out_of_order", "too_large", "unavailable"];
+export const AppendOutcomeUnknown = "refuse";
+
+export const CommitOutcomeNames = ["committed", "gap", "forbidden", "incomplete", "mismatch", "unavailable"];
+export const CommitOutcomeUnknown = "refuse";
+
+export const AbortOutcomeNames = ["aborted", "gap", "forbidden"];
+export const AbortOutcomeUnknown = "refuse";
+
+export const EvidenceNames = ["hashed", "named"];
+export const EvidenceUnknown = "refuse";
+
+export const ChangeKindNames = ["added", "removed"];
+export const ChangeKindUnknown = "refuse";
+
+export const ChangePageOutcomeNames = ["page", "gap", "forbidden", "invalid", "unavailable"];
+export const ChangePageOutcomeUnknown = "refuse";
+
+export const ListingOutcomeNames = ["page", "gap", "forbidden", "invalid", "unavailable"];
+export const ListingOutcomeUnknown = "refuse";
 
 export function enc_resource(out, v, depth) {
     if (typeof v.verification !== "string") throw new Refusal("wrong_type",0);
@@ -284,6 +321,280 @@ export function enc_closeresult(out, v, depth) {
   out.byte(0x7d);
 }
 
+export function enc_upload(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "handle");
+  out.ascii(": ");
+  esc(out, v.handle);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "digest");
+  out.ascii(": ");
+  esc(out, v.digest);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "size");
+  out.ascii(": ");
+  num(out, v.size);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "received");
+  out.ascii(": ");
+  num(out, v.received);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_stored(out, v, depth) {
+    if (typeof v.evidence !== "string") throw new Refusal("wrong_type",0);
+    if (v.evidence !== "hashed" && v.evidence !== "named") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "digest");
+  out.ascii(": ");
+  esc(out, v.digest);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "size");
+  out.ascii(": ");
+  num(out, v.size);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "evidence");
+  out.ascii(": ");
+  esc(out, v.evidence);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_beginresult(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "started" && v.outcome !== "committed" && v.outcome !== "present" && v.outcome !== "forbidden" && v.outcome !== "invalid" && v.outcome !== "conflict" && v.outcome !== "too_large" && v.outcome !== "busy" && v.outcome !== "unsupported" && v.outcome !== "unavailable" && v.outcome !== "exhausted") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  if (v.upload !== undefined && v.upload !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "upload");
+    out.ascii(": ");
+    enc_upload(out, v.upload, depth + 1);
+  }
+  if (v.stored !== undefined && v.stored !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "stored");
+    out.ascii(": ");
+    enc_stored(out, v.stored, depth + 1);
+  }
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "limit");
+  out.ascii(": ");
+  num(out, v.limit);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_appendresult(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "accepted" && v.outcome !== "gap" && v.outcome !== "forbidden" && v.outcome !== "invalid" && v.outcome !== "out_of_order" && v.outcome !== "too_large" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "received");
+  out.ascii(": ");
+  num(out, v.received);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_commitresult(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "committed" && v.outcome !== "gap" && v.outcome !== "forbidden" && v.outcome !== "incomplete" && v.outcome !== "mismatch" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  if (v.stored !== undefined && v.stored !== null) {
+    out.byte(0x2c);
+    out.byte(0x0a);
+    pad(out, depth + 1);
+    esc(out, "stored");
+    out.ascii(": ");
+    enc_stored(out, v.stored, depth + 1);
+  }
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "received");
+  out.ascii(": ");
+  num(out, v.received);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_abortresult(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "aborted" && v.outcome !== "gap" && v.outcome !== "forbidden") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_change(out, v, depth) {
+    if (typeof v.kind !== "string") throw new Refusal("wrong_type",0);
+    if (v.kind !== "added" && v.kind !== "removed") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "sequence");
+  out.ascii(": ");
+  num(out, v.sequence);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "kind");
+  out.ascii(": ");
+  esc(out, v.kind);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "digest");
+  out.ascii(": ");
+  esc(out, v.digest);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "size");
+  out.ascii(": ");
+  num(out, v.size);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_changepage(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "page" && v.outcome !== "gap" && v.outcome !== "forbidden" && v.outcome !== "invalid" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "changes");
+  out.ascii(": ");
+  encList(out, v.changes, depth + 1, enc_change);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "next");
+  out.ascii(": ");
+  esc(out, v.next);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "at_end");
+  out.ascii(": ");
+  out.ascii(v.at_end ? "true" : "false");
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_listedobject(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "digest");
+  out.ascii(": ");
+  esc(out, v.digest);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "size");
+  out.ascii(": ");
+  num(out, v.size);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_listingpage(out, v, depth) {
+    if (typeof v.outcome !== "string") throw new Refusal("wrong_type",0);
+    if (v.outcome !== "page" && v.outcome !== "gap" && v.outcome !== "forbidden" && v.outcome !== "invalid" && v.outcome !== "unavailable") { throw new Refusal("bad_enum",0); }
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "outcome");
+  out.ascii(": ");
+  esc(out, v.outcome);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "objects");
+  out.ascii(": ");
+  encList(out, v.objects, depth + 1, enc_listedobject);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "continuation");
+  out.ascii(": ");
+  esc(out, v.continuation);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "complete");
+  out.ascii(": ");
+  out.ascii(v.complete ? "true" : "false");
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "cursor");
+  out.ascii(": ");
+  esc(out, v.cursor);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 export function enc_oacontentreaderopenarguments(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -327,6 +638,120 @@ export function enc_oacontentreaderclosearguments(out, v, depth) {
   esc(out, "handle");
   out.ascii(": ");
   esc(out, v.handle);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentwriterbeginarguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "request");
+  out.ascii(": ");
+  esc(out, v.request);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "digest");
+  out.ascii(": ");
+  esc(out, v.digest);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "size");
+  out.ascii(": ");
+  num(out, v.size);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentwriterappendarguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "handle");
+  out.ascii(": ");
+  esc(out, v.handle);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "offset");
+  out.ascii(": ");
+  num(out, v.offset);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "data");
+  out.ascii(": ");
+  esc(out, encodeBinary(v.data));
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentwritercommitarguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "handle");
+  out.ascii(": ");
+  esc(out, v.handle);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentwriterabortarguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "handle");
+  out.ascii(": ");
+  esc(out, v.handle);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentchangesobservearguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "cursor");
+  out.ascii(": ");
+  esc(out, v.cursor);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "max_changes");
+  out.ascii(": ");
+  num(out, v.max_changes);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "wait_ms");
+  out.ascii(": ");
+  num(out, v.wait_ms);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentchangeslistarguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "continuation");
+  out.ascii(": ");
+  esc(out, v.continuation);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "limit");
+  out.ascii(": ");
+  num(out, v.limit);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -447,6 +872,78 @@ export function enc_oacontentreadercloseresult(out, v, depth) {
   esc(out, "value");
   out.ascii(": ");
   enc_closeresult(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentwriterbeginresult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  enc_beginresult(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentwriterappendresult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  enc_appendresult(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentwritercommitresult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  enc_commitresult(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentwriterabortresult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  enc_abortresult(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentchangesobserveresult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  enc_changepage(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+export function enc_oacontentchangeslistresult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  enc_listingpage(out, v.value, depth + 1);
   out.byte(0x0a);
   pad(out, depth);
   out.byte(0x7d);
@@ -735,24 +1232,127 @@ class Reader {
   }
 }
 
+function decodeList(r, elem) {
+  if (r.at() !== 0x5b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const out = [];
+  r.ws();
+  if (r.at() !== 0x5d) {
+    for (;;) {
+      r.ws();
+      out.push(elem(r));
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x5d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  return out;
+}
+
+// Opaque resource bound to receiving account and observed program and provider
+// lifetime. Digest is the requested canonical sha256 naming key, not a verified
+// hash. Size is observed and nonnegative. Verification is always unverified;
+// consumer verifies assembled bytes. No private path or immutable-snapshot
+// claim.
 export function newResource() {
   return { handle: "", digest: "", size: 0n, verification: "" };
 }
 
+// Resource present exactly for opened. Authorization precedes lookup. not_found
+// means no known match, not global absence.
 export function newOpenResult() {
   return { outcome: "", resource: null };
 }
 
+// Offset equals requested offset; total equals issued resource size. Length at
+// most max_bytes and offset+length at most total. eof iff offset+length equals
+// total. Non-EOF data is nonempty. Error/absence never means EOF.
 export function newChunk() {
   return { offset: 0n, total: 0n, data: new Uint8Array(0), eof: false };
 }
 
+// Chunk present exactly for data. changed reports observed mutation and
+// invalidates resource; discard assembly and explicitly reopen. Mutation
+// detection is advisory; verify completed bytes.
 export function newReadResult() {
   return { outcome: "", chunk: null };
 }
 
 export function newCloseResult() {
   return { outcome: "" };
+}
+
+// Opaque staged upload bound to the receiving account/program scope and
+// provider lifetime. Size is the declared total; received counts bytes accepted
+// in order. Staged bytes are never findable or readable.
+export function newUpload() {
+  return { handle: "", digest: "", size: 0n, received: 0n };
+}
+
+// hashed: the service hashed every byte it accepted into staging, the hash
+// equals digest, and the provider committed that staged object. named: an
+// existing provider naming match was found without hashing; size zero means
+// unknown.
+export function newStored() {
+  return { digest: "", size: 0n, evidence: "" };
+}
+
+// upload present exactly for started. stored present exactly for committed and
+// present. limit is the provider's maximum declared size for evaluated
+// outcomes, and zero for forbidden, invalid and unavailable.
+export function newBeginResult() {
+  return { outcome: "", upload: null, stored: null, limit: 0n };
+}
+
+// For accepted, out_of_order and too_large, received is the next offset the
+// service accepts. Other outcomes carry zero.
+export function newAppendResult() {
+  return { outcome: "", received: 0n };
+}
+
+// stored present exactly for committed with hashed evidence. For incomplete,
+// received is the next accepted offset. Other outcomes carry zero.
+export function newCommitResult() {
+  return { outcome: "", stored: null, received: 0n };
+}
+
+export function newAbortResult() {
+  return { outcome: "" };
+}
+
+// One observed change in provider journal order. Sequence increases within one
+// provider epoch. Digest is a canonical sha256 naming key, not verified
+// content. Size is observed; zero means unknown. A notice grants no access.
+export function newChange() {
+  return { sequence: 0n, kind: "", digest: "", size: 0n };
+}
+
+// page carries at most max_changes entries the caller may read and a next
+// cursor. next advances past every entry examined, including entries the caller
+// may not read, which are omitted without a count. at_end means the journal end
+// was reached during this call. Refusals carry no changes, an unchanged cursor
+// and at_end false. gap requires restarting from List.
+export function newChangePage() {
+  return { outcome: "", changes: [], next: "", at_end: false };
+}
+
+export function newListedObject() {
+  return { digest: "", size: 0n };
+}
+
+// page carries at most limit objects the caller may read, in digest order, from
+// one frozen snapshot. cursor is the change cursor at which that snapshot was
+// taken and is identical on every page of it; Observe from it reports every
+// later change. complete means the snapshot is exhausted; otherwise
+// continuation is nonempty. Objects the caller may not read are omitted without
+// a count. Refusals carry no objects, empty continuation and cursor, and
+// complete false.
+export function newListingPage() {
+  return { outcome: "", objects: [], continuation: "", complete: false, cursor: "" };
 }
 
 export function newOAContentReaderOpenArguments() {
@@ -765,6 +1365,30 @@ export function newOAContentReaderReadArguments() {
 
 export function newOAContentReaderCloseArguments() {
   return { handle: "" };
+}
+
+export function newOAContentWriterBeginArguments() {
+  return { request: "", digest: "", size: 0n };
+}
+
+export function newOAContentWriterAppendArguments() {
+  return { handle: "", offset: 0n, data: new Uint8Array(0) };
+}
+
+export function newOAContentWriterCommitArguments() {
+  return { handle: "" };
+}
+
+export function newOAContentWriterAbortArguments() {
+  return { handle: "" };
+}
+
+export function newOAContentChangesObserveArguments() {
+  return { cursor: "", max_changes: 0n, wait_ms: 0n };
+}
+
+export function newOAContentChangesListArguments() {
+  return { continuation: "", limit: 0n };
 }
 
 export function newOAServiceFrame() {
@@ -789,6 +1413,30 @@ export function newOAContentReaderReadResult() {
 
 export function newOAContentReaderCloseResult() {
   return { value: newCloseResult() };
+}
+
+export function newOAContentWriterBeginResult() {
+  return { value: newBeginResult() };
+}
+
+export function newOAContentWriterAppendResult() {
+  return { value: newAppendResult() };
+}
+
+export function newOAContentWriterCommitResult() {
+  return { value: newCommitResult() };
+}
+
+export function newOAContentWriterAbortResult() {
+  return { value: newAbortResult() };
+}
+
+export function newOAContentChangesObserveResult() {
+  return { value: newChangePage() };
+}
+
+export function newOAContentChangesListResult() {
+  return { value: newListingPage() };
 }
 
 function decode_resource(r) {
@@ -1002,6 +1650,452 @@ function decode_closeresult(r) {
   return v;
 }
 
+function decode_upload(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newUpload();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "handle") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.handle = r.string();
+      } else if (key === "digest") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.digest = r.string();
+      } else if (key === "size") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.size = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "received") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.received = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 15) >>> 0) !== 15) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_stored(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newStored();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "digest") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.digest = r.string();
+      } else if (key === "size") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.size = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "evidence") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.evidence = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+    if (v.evidence !== "hashed" && v.evidence !== "named") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function decode_beginresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newBeginResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "upload") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.upload = decode_upload(r);
+      } else if (key === "stored") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.stored = decode_stored(r);
+      } else if (key === "limit") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.limit = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 9) >>> 0) !== 9) throw r.refuse("missing_field");
+    if (v.outcome !== "started" && v.outcome !== "committed" && v.outcome !== "present" && v.outcome !== "forbidden" && v.outcome !== "invalid" && v.outcome !== "conflict" && v.outcome !== "too_large" && v.outcome !== "busy" && v.outcome !== "unsupported" && v.outcome !== "unavailable" && v.outcome !== "exhausted") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function decode_appendresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newAppendResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "received") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.received = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+    if (v.outcome !== "accepted" && v.outcome !== "gap" && v.outcome !== "forbidden" && v.outcome !== "invalid" && v.outcome !== "out_of_order" && v.outcome !== "too_large" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function decode_commitresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newCommitResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "stored") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.stored = decode_stored(r);
+      } else if (key === "received") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.received = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 5) >>> 0) !== 5) throw r.refuse("missing_field");
+    if (v.outcome !== "committed" && v.outcome !== "gap" && v.outcome !== "forbidden" && v.outcome !== "incomplete" && v.outcome !== "mismatch" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function decode_abortresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newAbortResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+    if (v.outcome !== "aborted" && v.outcome !== "gap" && v.outcome !== "forbidden") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function decode_change(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newChange();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "sequence") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.sequence = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "kind") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.kind = r.string();
+      } else if (key === "digest") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.digest = r.string();
+      } else if (key === "size") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.size = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 15) >>> 0) !== 15) throw r.refuse("missing_field");
+    if (v.kind !== "added" && v.kind !== "removed") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function decode_changepage(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newChangePage();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "changes") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.changes = decodeList(r, decode_change);
+      } else if (key === "next") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.next = r.string();
+      } else if (key === "at_end") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.at_end = r.boolean();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 15) >>> 0) !== 15) throw r.refuse("missing_field");
+    if (v.outcome !== "page" && v.outcome !== "gap" && v.outcome !== "forbidden" && v.outcome !== "invalid" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
+function decode_listedobject(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newListedObject();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "digest") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.digest = r.string();
+      } else if (key === "size") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.size = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_listingpage(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newListingPage();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "outcome") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.outcome = r.string();
+      } else if (key === "objects") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.objects = decodeList(r, decode_listedobject);
+      } else if (key === "continuation") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.continuation = r.string();
+      } else if (key === "complete") {
+        if (seen & 8) throw r.refuse("duplicate_field");
+        seen |= 8;
+        v.complete = r.boolean();
+      } else if (key === "cursor") {
+        if (seen & 16) throw r.refuse("duplicate_field");
+        seen |= 16;
+        v.cursor = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 31) >>> 0) !== 31) throw r.refuse("missing_field");
+    if (v.outcome !== "page" && v.outcome !== "gap" && v.outcome !== "forbidden" && v.outcome !== "invalid" && v.outcome !== "unavailable") { throw r.refuse("bad_enum"); }
+  return v;
+}
+
 function decode_oacontentreaderopenarguments(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -1112,6 +2206,244 @@ function decode_oacontentreaderclosearguments(r) {
   r.pos++;
   r.depth--;
   if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentwriterbeginarguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentWriterBeginArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "request") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.request = r.string();
+      } else if (key === "digest") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.digest = r.string();
+      } else if (key === "size") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.size = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentwriterappendarguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentWriterAppendArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "handle") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.handle = r.string();
+      } else if (key === "offset") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.offset = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "data") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.data = readBinary(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentwritercommitarguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentWriterCommitArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "handle") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.handle = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentwriterabortarguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentWriterAbortArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "handle") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.handle = r.string();
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentchangesobservearguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentChangesObserveArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "cursor") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.cursor = r.string();
+      } else if (key === "max_changes") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.max_changes = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else if (key === "wait_ms") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.wait_ms = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentchangeslistarguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentChangesListArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "continuation") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.continuation = r.string();
+      } else if (key === "limit") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.limit = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 3) >>> 0) !== 3) throw r.refuse("missing_field");
   return v;
 }
 
@@ -1357,6 +2689,216 @@ function decode_oacontentreadercloseresult(r) {
   return v;
 }
 
+function decode_oacontentwriterbeginresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentWriterBeginResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = decode_beginresult(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentwriterappendresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentWriterAppendResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = decode_appendresult(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentwritercommitresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentWriterCommitResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = decode_commitresult(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentwriterabortresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentWriterAbortResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = decode_abortresult(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentchangesobserveresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentChangesObserveResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = decode_changepage(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
+function decode_oacontentchangeslistresult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAContentChangesListResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = decode_listingpage(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 export function decode(data) {
   const r = new Reader(data);
   r.ws();
@@ -1432,15 +2974,37 @@ _serviceRecords["OpenResult"] = [["outcome","string","never"],["resource","Resou
 _serviceRecords["Chunk"] = [["offset","i64","never"],["total","i64","never"],["data","binary","never"],["eof","bool","never"],];
 _serviceRecords["ReadResult"] = [["outcome","string","never"],["chunk","Chunk","absent"],];
 _serviceRecords["CloseResult"] = [["outcome","string","never"],];
+_serviceRecords["Upload"] = [["handle","string","never"],["digest","string","never"],["size","i64","never"],["received","i64","never"],];
+_serviceRecords["Stored"] = [["digest","string","never"],["size","i64","never"],["evidence","string","never"],];
+_serviceRecords["BeginResult"] = [["outcome","string","never"],["upload","Upload","absent"],["stored","Stored","absent"],["limit","i64","never"],];
+_serviceRecords["AppendResult"] = [["outcome","string","never"],["received","i64","never"],];
+_serviceRecords["CommitResult"] = [["outcome","string","never"],["stored","Stored","absent"],["received","i64","never"],];
+_serviceRecords["AbortResult"] = [["outcome","string","never"],];
+_serviceRecords["Change"] = [["sequence","i64","never"],["kind","string","never"],["digest","string","never"],["size","i64","never"],];
+_serviceRecords["ChangePage"] = [["outcome","string","never"],["changes","list<Change>","never"],["next","string","never"],["at_end","bool","never"],];
+_serviceRecords["ListedObject"] = [["digest","string","never"],["size","i64","never"],];
+_serviceRecords["ListingPage"] = [["outcome","string","never"],["objects","list<ListedObject>","never"],["continuation","string","never"],["complete","bool","never"],["cursor","string","never"],];
 _serviceRecords["OAContentReaderOpenArguments"] = [["digest","string","never"],];
 _serviceRecords["OAContentReaderReadArguments"] = [["handle","string","never"],["offset","i64","never"],["max_bytes","i64","never"],];
 _serviceRecords["OAContentReaderCloseArguments"] = [["handle","string","never"],];
+_serviceRecords["OAContentWriterBeginArguments"] = [["request","string","never"],["digest","string","never"],["size","i64","never"],];
+_serviceRecords["OAContentWriterAppendArguments"] = [["handle","string","never"],["offset","i64","never"],["data","binary","never"],];
+_serviceRecords["OAContentWriterCommitArguments"] = [["handle","string","never"],];
+_serviceRecords["OAContentWriterAbortArguments"] = [["handle","string","never"],];
+_serviceRecords["OAContentChangesObserveArguments"] = [["cursor","string","never"],["max_changes","i64","never"],["wait_ms","i64","never"],];
+_serviceRecords["OAContentChangesListArguments"] = [["continuation","string","never"],["limit","i64","never"],];
 _serviceRecords["OAServiceFrame"] = [["version","i32","never"],["service","string","never"],["method","string","never"],["arguments","json","never"],];
 _serviceRecords["OAServiceReply"] = [["version","i32","never"],["service","string","never"],["method","string","never"],["ok","bool","never"],["payload","json","never"],];
 _serviceRecords["OAServiceError"] = [["code","string","never"],["message","string","never"],];
 _serviceRecords["OAContentReaderOpenResult"] = [["value","OpenResult","never"],];
 _serviceRecords["OAContentReaderReadResult"] = [["value","ReadResult","never"],];
 _serviceRecords["OAContentReaderCloseResult"] = [["value","CloseResult","never"],];
+_serviceRecords["OAContentWriterBeginResult"] = [["value","BeginResult","never"],];
+_serviceRecords["OAContentWriterAppendResult"] = [["value","AppendResult","never"],];
+_serviceRecords["OAContentWriterCommitResult"] = [["value","CommitResult","never"],];
+_serviceRecords["OAContentWriterAbortResult"] = [["value","AbortResult","never"],];
+_serviceRecords["OAContentChangesObserveResult"] = [["value","ChangePage","never"],];
+_serviceRecords["OAContentChangesListResult"] = [["value","ListingPage","never"],];
 
 function _serviceRequest(service, method, argumentsBytes) {
   return _serviceEncode(enc_oaserviceframe, {
@@ -1500,3 +3064,86 @@ export class ContentReaderClient {
   }
 }
 export const ContentReaderService = Object.freeze({wireName:"abstraction.storage/content-reader@1",Client:ContentReaderClient});
+
+export class ContentWriterClient {
+  constructor(transport) { this._transport = transport; }
+  async Begin(arg0,arg1,arg2) {
+    const args = newOAContentWriterBeginArguments();
+    args["request"] = arg0;
+    args["digest"] = arg1;
+    args["size"] = arg2;
+    _serviceCheck("OAContentWriterBeginArguments", args);
+    const payload = _serviceEncode(enc_oacontentwriterbeginarguments, args, 1);
+    _serviceDecode(decode_oacontentwriterbeginarguments, payload, 1);
+    const request = _serviceRequest("abstraction.storage/content-writer@1", "Begin", payload);
+    const reply = _serviceResponse(await this._transport.exchangeFrame(request), "abstraction.storage/content-writer@1", "Begin");
+    const result = _serviceDecode(decode_oacontentwriterbeginresult, reply, 1);
+    return result.value;
+  }
+  async Append(arg0,arg1,arg2) {
+    const args = newOAContentWriterAppendArguments();
+    args["handle"] = arg0;
+    args["offset"] = arg1;
+    args["data"] = arg2;
+    _serviceCheck("OAContentWriterAppendArguments", args);
+    const payload = _serviceEncode(enc_oacontentwriterappendarguments, args, 1);
+    _serviceDecode(decode_oacontentwriterappendarguments, payload, 1);
+    const request = _serviceRequest("abstraction.storage/content-writer@1", "Append", payload);
+    const reply = _serviceResponse(await this._transport.exchangeFrame(request), "abstraction.storage/content-writer@1", "Append");
+    const result = _serviceDecode(decode_oacontentwriterappendresult, reply, 1);
+    return result.value;
+  }
+  async Commit(arg0) {
+    const args = newOAContentWriterCommitArguments();
+    args["handle"] = arg0;
+    _serviceCheck("OAContentWriterCommitArguments", args);
+    const payload = _serviceEncode(enc_oacontentwritercommitarguments, args, 1);
+    _serviceDecode(decode_oacontentwritercommitarguments, payload, 1);
+    const request = _serviceRequest("abstraction.storage/content-writer@1", "Commit", payload);
+    const reply = _serviceResponse(await this._transport.exchangeFrame(request), "abstraction.storage/content-writer@1", "Commit");
+    const result = _serviceDecode(decode_oacontentwritercommitresult, reply, 1);
+    return result.value;
+  }
+  async Abort(arg0) {
+    const args = newOAContentWriterAbortArguments();
+    args["handle"] = arg0;
+    _serviceCheck("OAContentWriterAbortArguments", args);
+    const payload = _serviceEncode(enc_oacontentwriterabortarguments, args, 1);
+    _serviceDecode(decode_oacontentwriterabortarguments, payload, 1);
+    const request = _serviceRequest("abstraction.storage/content-writer@1", "Abort", payload);
+    const reply = _serviceResponse(await this._transport.exchangeFrame(request), "abstraction.storage/content-writer@1", "Abort");
+    const result = _serviceDecode(decode_oacontentwriterabortresult, reply, 1);
+    return result.value;
+  }
+}
+export const ContentWriterService = Object.freeze({wireName:"abstraction.storage/content-writer@1",Client:ContentWriterClient});
+
+export class ContentChangesClient {
+  constructor(transport) { this._transport = transport; }
+  async Observe(arg0,arg1,arg2) {
+    const args = newOAContentChangesObserveArguments();
+    args["cursor"] = arg0;
+    args["max_changes"] = arg1;
+    args["wait_ms"] = arg2;
+    _serviceCheck("OAContentChangesObserveArguments", args);
+    const payload = _serviceEncode(enc_oacontentchangesobservearguments, args, 1);
+    _serviceDecode(decode_oacontentchangesobservearguments, payload, 1);
+    const request = _serviceRequest("abstraction.storage/content-changes@1", "Observe", payload);
+    const reply = _serviceResponse(await this._transport.exchangeFrame(request), "abstraction.storage/content-changes@1", "Observe");
+    const result = _serviceDecode(decode_oacontentchangesobserveresult, reply, 1);
+    return result.value;
+  }
+  async List(arg0,arg1) {
+    const args = newOAContentChangesListArguments();
+    args["continuation"] = arg0;
+    args["limit"] = arg1;
+    _serviceCheck("OAContentChangesListArguments", args);
+    const payload = _serviceEncode(enc_oacontentchangeslistarguments, args, 1);
+    _serviceDecode(decode_oacontentchangeslistarguments, payload, 1);
+    const request = _serviceRequest("abstraction.storage/content-changes@1", "List", payload);
+    const reply = _serviceResponse(await this._transport.exchangeFrame(request), "abstraction.storage/content-changes@1", "List");
+    const result = _serviceDecode(decode_oacontentchangeslistresult, reply, 1);
+    return result.value;
+  }
+}
+export const ContentChangesService = Object.freeze({wireName:"abstraction.storage/content-changes@1",Client:ContentChangesClient});

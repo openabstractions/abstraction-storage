@@ -187,6 +187,23 @@ func esc(out []byte, s string) []byte {
 	return append(out, '"')
 }
 
+func encList[T any](out []byte, v []T, depth int, enc func([]byte, *T, int) []byte) []byte {
+	if len(v) == 0 {
+		return append(out, '[', ']')
+	}
+	out = append(out, '[', '\n')
+	for i := range v {
+		out = pad(out, depth+1)
+		out = enc(out, &v[i], depth+1)
+		if i+1 < len(v) {
+			out = append(out, ',')
+		}
+		out = append(out, '\n')
+	}
+	out = pad(out, depth)
+	return append(out, ']')
+}
+
 var VerificationNames = []string{"unverified"}
 
 const VerificationUnverified = "unverified"
@@ -237,6 +254,125 @@ const CloseOutcomeForbidden = "forbidden"
 
 const CloseOutcomeUnknown = "refuse"
 
+var BeginOutcomeNames = []string{"started", "committed", "present", "forbidden", "invalid", "conflict", "too_large", "busy", "unsupported", "unavailable", "exhausted"}
+
+const BeginOutcomeStarted = "started"
+
+const BeginOutcomeCommitted = "committed"
+
+const BeginOutcomePresent = "present"
+
+const BeginOutcomeForbidden = "forbidden"
+
+const BeginOutcomeInvalid = "invalid"
+
+const BeginOutcomeConflict = "conflict"
+
+const BeginOutcomeTooLarge = "too_large"
+
+const BeginOutcomeBusy = "busy"
+
+const BeginOutcomeUnsupported = "unsupported"
+
+const BeginOutcomeUnavailable = "unavailable"
+
+const BeginOutcomeExhausted = "exhausted"
+
+const BeginOutcomeUnknown = "refuse"
+
+var AppendOutcomeNames = []string{"accepted", "gap", "forbidden", "invalid", "out_of_order", "too_large", "unavailable"}
+
+const AppendOutcomeAccepted = "accepted"
+
+const AppendOutcomeGap = "gap"
+
+const AppendOutcomeForbidden = "forbidden"
+
+const AppendOutcomeInvalid = "invalid"
+
+const AppendOutcomeOutOfOrder = "out_of_order"
+
+const AppendOutcomeTooLarge = "too_large"
+
+const AppendOutcomeUnavailable = "unavailable"
+
+const AppendOutcomeUnknown = "refuse"
+
+var CommitOutcomeNames = []string{"committed", "gap", "forbidden", "incomplete", "mismatch", "unavailable"}
+
+const CommitOutcomeCommitted = "committed"
+
+const CommitOutcomeGap = "gap"
+
+const CommitOutcomeForbidden = "forbidden"
+
+const CommitOutcomeIncomplete = "incomplete"
+
+const CommitOutcomeMismatch = "mismatch"
+
+const CommitOutcomeUnavailable = "unavailable"
+
+const CommitOutcomeUnknown = "refuse"
+
+var AbortOutcomeNames = []string{"aborted", "gap", "forbidden"}
+
+const AbortOutcomeAborted = "aborted"
+
+const AbortOutcomeGap = "gap"
+
+const AbortOutcomeForbidden = "forbidden"
+
+const AbortOutcomeUnknown = "refuse"
+
+var EvidenceNames = []string{"hashed", "named"}
+
+const EvidenceHashed = "hashed"
+
+const EvidenceNamed = "named"
+
+const EvidenceUnknown = "refuse"
+
+var ChangeKindNames = []string{"added", "removed"}
+
+const ChangeKindAdded = "added"
+
+const ChangeKindRemoved = "removed"
+
+const ChangeKindUnknown = "refuse"
+
+var ChangePageOutcomeNames = []string{"page", "gap", "forbidden", "invalid", "unavailable"}
+
+const ChangePageOutcomePage = "page"
+
+const ChangePageOutcomeGap = "gap"
+
+const ChangePageOutcomeForbidden = "forbidden"
+
+const ChangePageOutcomeInvalid = "invalid"
+
+const ChangePageOutcomeUnavailable = "unavailable"
+
+const ChangePageOutcomeUnknown = "refuse"
+
+var ListingOutcomeNames = []string{"page", "gap", "forbidden", "invalid", "unavailable"}
+
+const ListingOutcomePage = "page"
+
+const ListingOutcomeGap = "gap"
+
+const ListingOutcomeForbidden = "forbidden"
+
+const ListingOutcomeInvalid = "invalid"
+
+const ListingOutcomeUnavailable = "unavailable"
+
+const ListingOutcomeUnknown = "refuse"
+
+// Opaque resource bound to receiving account and observed program and provider
+// lifetime. Digest is the requested canonical sha256 naming key, not a verified
+// hash. Size is observed and nonnegative. Verification is always unverified;
+// consumer verifies assembled bytes. No private path or immutable-snapshot
+// claim.
 type Resource struct {
 	Handle       string
 	Digest       string
@@ -244,11 +380,16 @@ type Resource struct {
 	Verification string
 }
 
+// Resource present exactly for opened. Authorization precedes lookup. not_found
+// means no known match, not global absence.
 type OpenResult struct {
 	Outcome  string
 	Resource *Resource
 }
 
+// Offset equals requested offset; total equals issued resource size. Length at
+// most max_bytes and offset+length at most total. eof iff offset+length equals
+// total. Non-EOF data is nonempty. Error/absence never means EOF.
 type Chunk struct {
 	Offset int64
 	Total  int64
@@ -256,6 +397,9 @@ type Chunk struct {
 	Eof    bool
 }
 
+// Chunk present exactly for data. changed reports observed mutation and
+// invalidates resource; discard assembly and explicitly reopen. Mutation
+// detection is advisory; verify completed bytes.
 type ReadResult struct {
 	Outcome string
 	Chunk   *Chunk
@@ -263,6 +407,97 @@ type ReadResult struct {
 
 type CloseResult struct {
 	Outcome string
+}
+
+// Opaque staged upload bound to the receiving account/program scope and
+// provider lifetime. Size is the declared total; received counts bytes accepted
+// in order. Staged bytes are never findable or readable.
+type Upload struct {
+	Handle   string
+	Digest   string
+	Size     int64
+	Received int64
+}
+
+// hashed: the service hashed every byte it accepted into staging, the hash
+// equals digest, and the provider committed that staged object. named: an
+// existing provider naming match was found without hashing; size zero means
+// unknown.
+type Stored struct {
+	Digest   string
+	Size     int64
+	Evidence string
+}
+
+// upload present exactly for started. stored present exactly for committed and
+// present. limit is the provider's maximum declared size for evaluated
+// outcomes, and zero for forbidden, invalid and unavailable.
+type BeginResult struct {
+	Outcome string
+	Upload  *Upload
+	Stored  *Stored
+	Limit   int64
+}
+
+// For accepted, out_of_order and too_large, received is the next offset the
+// service accepts. Other outcomes carry zero.
+type AppendResult struct {
+	Outcome  string
+	Received int64
+}
+
+// stored present exactly for committed with hashed evidence. For incomplete,
+// received is the next accepted offset. Other outcomes carry zero.
+type CommitResult struct {
+	Outcome  string
+	Stored   *Stored
+	Received int64
+}
+
+type AbortResult struct {
+	Outcome string
+}
+
+// One observed change in provider journal order. Sequence increases within one
+// provider epoch. Digest is a canonical sha256 naming key, not verified
+// content. Size is observed; zero means unknown. A notice grants no access.
+type Change struct {
+	Sequence int64
+	Kind     string
+	Digest   string
+	Size     int64
+}
+
+// page carries at most max_changes entries the caller may read and a next
+// cursor. next advances past every entry examined, including entries the caller
+// may not read, which are omitted without a count. at_end means the journal end
+// was reached during this call. Refusals carry no changes, an unchanged cursor
+// and at_end false. gap requires restarting from List.
+type ChangePage struct {
+	Outcome string
+	Changes []Change
+	Next    string
+	AtEnd   bool
+}
+
+type ListedObject struct {
+	Digest string
+	Size   int64
+}
+
+// page carries at most limit objects the caller may read, in digest order, from
+// one frozen snapshot. cursor is the change cursor at which that snapshot was
+// taken and is identical on every page of it; Observe from it reports every
+// later change. complete means the snapshot is exhausted; otherwise
+// continuation is nonempty. Objects the caller may not read are omitted without
+// a count. Refusals carry no objects, empty continuation and cursor, and
+// complete false.
+type ListingPage struct {
+	Outcome      string
+	Objects      []ListedObject
+	Continuation string
+	Complete     bool
+	Cursor       string
 }
 
 type OAContentReaderOpenArguments struct {
@@ -277,6 +512,37 @@ type OAContentReaderReadArguments struct {
 
 type OAContentReaderCloseArguments struct {
 	Handle string
+}
+
+type OAContentWriterBeginArguments struct {
+	Request string
+	Digest  string
+	Size    int64
+}
+
+type OAContentWriterAppendArguments struct {
+	Handle string
+	Offset int64
+	Data   []byte
+}
+
+type OAContentWriterCommitArguments struct {
+	Handle string
+}
+
+type OAContentWriterAbortArguments struct {
+	Handle string
+}
+
+type OAContentChangesObserveArguments struct {
+	Cursor     string
+	MaxChanges int64
+	WaitMs     int64
+}
+
+type OAContentChangesListArguments struct {
+	Continuation string
+	Limit        int64
 }
 
 type OAServiceFrame struct {
@@ -309,6 +575,30 @@ type OAContentReaderReadResult struct {
 
 type OAContentReaderCloseResult struct {
 	Value CloseResult
+}
+
+type OAContentWriterBeginResult struct {
+	Value BeginResult
+}
+
+type OAContentWriterAppendResult struct {
+	Value AppendResult
+}
+
+type OAContentWriterCommitResult struct {
+	Value CommitResult
+}
+
+type OAContentWriterAbortResult struct {
+	Value AbortResult
+}
+
+type OAContentChangesObserveResult struct {
+	Value ChangePage
+}
+
+type OAContentChangesListResult struct {
+	Value ListingPage
 }
 
 func encResource(out []byte, v *Resource, depth int) []byte {
@@ -439,6 +729,296 @@ func encCloseResult(out []byte, v *CloseResult, depth int) []byte {
 	return append(out, '}')
 }
 
+func encUpload(out []byte, v *Upload, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "handle")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Handle)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "digest")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Digest)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = num(out, v.Size)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "received")
+	out = append(out, ':', ' ')
+	out = num(out, v.Received)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encStored(out []byte, v *Stored, depth int) []byte {
+	if v.Evidence != "hashed" && v.Evidence != "named" {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "digest")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Digest)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = num(out, v.Size)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "evidence")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Evidence)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encBeginResult(out []byte, v *BeginResult, depth int) []byte {
+	if v.Outcome != "started" && v.Outcome != "committed" && v.Outcome != "present" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "conflict" && v.Outcome != "too_large" && v.Outcome != "busy" && v.Outcome != "unsupported" && v.Outcome != "unavailable" && v.Outcome != "exhausted" {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome)
+	if v.Upload != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "upload")
+		out = append(out, ':', ' ')
+		out = encUpload(out, v.Upload, depth+1)
+	}
+	if v.Stored != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "stored")
+		out = append(out, ':', ' ')
+		out = encStored(out, v.Stored, depth+1)
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "limit")
+	out = append(out, ':', ' ')
+	out = num(out, v.Limit)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encAppendResult(out []byte, v *AppendResult, depth int) []byte {
+	if v.Outcome != "accepted" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "out_of_order" && v.Outcome != "too_large" && v.Outcome != "unavailable" {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "received")
+	out = append(out, ':', ' ')
+	out = num(out, v.Received)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encCommitResult(out []byte, v *CommitResult, depth int) []byte {
+	if v.Outcome != "committed" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "incomplete" && v.Outcome != "mismatch" && v.Outcome != "unavailable" {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome)
+	if v.Stored != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "stored")
+		out = append(out, ':', ' ')
+		out = encStored(out, v.Stored, depth+1)
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "received")
+	out = append(out, ':', ' ')
+	out = num(out, v.Received)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encAbortResult(out []byte, v *AbortResult, depth int) []byte {
+	if v.Outcome != "aborted" && v.Outcome != "gap" && v.Outcome != "forbidden" {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encChange(out []byte, v *Change, depth int) []byte {
+	if v.Kind != "added" && v.Kind != "removed" {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "sequence")
+	out = append(out, ':', ' ')
+	out = num(out, v.Sequence)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "kind")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Kind)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "digest")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Digest)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = num(out, v.Size)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encChangePage(out []byte, v *ChangePage, depth int) []byte {
+	if v.Outcome != "page" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "changes")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Changes, depth+1, encChange)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "next")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Next)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "at_end")
+	out = append(out, ':', ' ')
+	if v.AtEnd {
+		out = append(out, 't', 'r', 'u', 'e')
+	} else {
+		out = append(out, 'f', 'a', 'l', 's', 'e')
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encListedObject(out []byte, v *ListedObject, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "digest")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Digest)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = num(out, v.Size)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encListingPage(out []byte, v *ListingPage, depth int) []byte {
+	if v.Outcome != "page" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "objects")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Objects, depth+1, encListedObject)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "continuation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Continuation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "complete")
+	out = append(out, ':', ' ')
+	if v.Complete {
+		out = append(out, 't', 'r', 'u', 'e')
+	} else {
+		out = append(out, 'f', 'a', 'l', 's', 'e')
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "cursor")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Cursor)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encOAContentReaderOpenArguments(out []byte, v *OAContentReaderOpenArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
@@ -482,6 +1062,120 @@ func encOAContentReaderCloseArguments(out []byte, v *OAContentReaderCloseArgumen
 	out = esc(out, "handle")
 	out = append(out, ':', ' ')
 	out = esc(out, v.Handle)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentWriterBeginArguments(out []byte, v *OAContentWriterBeginArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "request")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Request)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "digest")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Digest)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = num(out, v.Size)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentWriterAppendArguments(out []byte, v *OAContentWriterAppendArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "handle")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Handle)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "offset")
+	out = append(out, ':', ' ')
+	out = num(out, v.Offset)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "data")
+	out = append(out, ':', ' ')
+	out = esc(out, encodeBinary(v.Data))
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentWriterCommitArguments(out []byte, v *OAContentWriterCommitArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "handle")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Handle)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentWriterAbortArguments(out []byte, v *OAContentWriterAbortArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "handle")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Handle)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentChangesObserveArguments(out []byte, v *OAContentChangesObserveArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "cursor")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Cursor)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "max_changes")
+	out = append(out, ':', ' ')
+	out = num(out, v.MaxChanges)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "wait_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.WaitMs)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentChangesListArguments(out []byte, v *OAContentChangesListArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "continuation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Continuation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "limit")
+	out = append(out, ':', ' ')
+	out = num(out, v.Limit)
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -606,6 +1300,78 @@ func encOAContentReaderCloseResult(out []byte, v *OAContentReaderCloseResult, de
 	out = esc(out, "value")
 	out = append(out, ':', ' ')
 	out = encCloseResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentWriterBeginResult(out []byte, v *OAContentWriterBeginResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encBeginResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentWriterAppendResult(out []byte, v *OAContentWriterAppendResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encAppendResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentWriterCommitResult(out []byte, v *OAContentWriterCommitResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encCommitResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentWriterAbortResult(out []byte, v *OAContentWriterAbortResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encAbortResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentChangesObserveResult(out []byte, v *OAContentChangesObserveResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encChangePage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentChangesListResult(out []byte, v *OAContentChangesListResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encListingPage(out, &v.Value, depth+1)
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -1094,6 +1860,39 @@ func (r *reader) skipContainer() error {
 	return nil
 }
 
+func decodeList[T any](r *reader, elem func(*reader) (*T, error)) ([]T, error) {
+	if r.at() != '[' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	out := []T{}
+	r.ws()
+	if r.at() != ']' {
+		for {
+			r.ws()
+			v, err := elem(r)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, *v)
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != ']' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	return out, nil
+}
+
 func (r *reader) decodeResource() (*Resource, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -1481,6 +2280,840 @@ func (r *reader) decodeCloseResult() (*CloseResult, error) {
 	return v, nil
 }
 
+func (r *reader) decodeUpload() (*Upload, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Upload{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "handle":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Handle = x
+			case "digest":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Digest = x
+			case "size":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			case "received":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Received = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&15 != 15 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeStored() (*Stored, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Stored{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "digest":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Digest = x
+			case "size":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			case "evidence":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Evidence = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	if v.Evidence != "hashed" && v.Evidence != "named" {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeBeginResult() (*BeginResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &BeginResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Outcome = x
+			case "upload":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeUpload()
+				if err != nil {
+					return nil, err
+				}
+				v.Upload = x
+			case "stored":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.decodeStored()
+				if err != nil {
+					return nil, err
+				}
+				v.Stored = x
+			case "limit":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Limit = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&9 != 9 {
+		return nil, r.refuse("missing_field")
+	}
+	if v.Outcome != "started" && v.Outcome != "committed" && v.Outcome != "present" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "conflict" && v.Outcome != "too_large" && v.Outcome != "busy" && v.Outcome != "unsupported" && v.Outcome != "unavailable" && v.Outcome != "exhausted" {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeAppendResult() (*AppendResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &AppendResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Outcome = x
+			case "received":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Received = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	if v.Outcome != "accepted" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "out_of_order" && v.Outcome != "too_large" && v.Outcome != "unavailable" {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeCommitResult() (*CommitResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &CommitResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Outcome = x
+			case "stored":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeStored()
+				if err != nil {
+					return nil, err
+				}
+				v.Stored = x
+			case "received":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Received = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&5 != 5 {
+		return nil, r.refuse("missing_field")
+	}
+	if v.Outcome != "committed" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "incomplete" && v.Outcome != "mismatch" && v.Outcome != "unavailable" {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeAbortResult() (*AbortResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &AbortResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Outcome = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	if v.Outcome != "aborted" && v.Outcome != "gap" && v.Outcome != "forbidden" {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeChange() (*Change, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Change{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "sequence":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Sequence = x
+			case "kind":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Kind = x
+			case "digest":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Digest = x
+			case "size":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&15 != 15 {
+		return nil, r.refuse("missing_field")
+	}
+	if v.Kind != "added" && v.Kind != "removed" {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeChangePage() (*ChangePage, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &ChangePage{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Outcome = x
+			case "changes":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := decodeList(r, (*reader).decodeChange)
+				if err != nil {
+					return nil, err
+				}
+				v.Changes = x
+			case "next":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Next = x
+			case "at_end":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.boolean()
+				if err != nil {
+					return nil, err
+				}
+				v.AtEnd = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&15 != 15 {
+		return nil, r.refuse("missing_field")
+	}
+	if v.Outcome != "page" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeListedObject() (*ListedObject, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &ListedObject{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "digest":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Digest = x
+			case "size":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeListingPage() (*ListingPage, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &ListingPage{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Outcome = x
+			case "objects":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := decodeList(r, (*reader).decodeListedObject)
+				if err != nil {
+					return nil, err
+				}
+				v.Objects = x
+			case "continuation":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Continuation = x
+			case "complete":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.boolean()
+				if err != nil {
+					return nil, err
+				}
+				v.Complete = x
+			case "cursor":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Cursor = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&31 != 31 {
+		return nil, r.refuse("missing_field")
+	}
+	if v.Outcome != "page" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeOAContentReaderOpenArguments() (*OAContentReaderOpenArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -1673,6 +3306,430 @@ func (r *reader) decodeOAContentReaderCloseArguments() (*OAContentReaderCloseArg
 	r.pos++
 	r.depth--
 	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentWriterBeginArguments() (*OAContentWriterBeginArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentWriterBeginArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "request":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Request = x
+			case "digest":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Digest = x
+			case "size":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentWriterAppendArguments() (*OAContentWriterAppendArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentWriterAppendArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "handle":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Handle = x
+			case "offset":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Offset = x
+			case "data":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.binary()
+				if err != nil {
+					return nil, err
+				}
+				v.Data = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentWriterCommitArguments() (*OAContentWriterCommitArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentWriterCommitArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "handle":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Handle = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentWriterAbortArguments() (*OAContentWriterAbortArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentWriterAbortArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "handle":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Handle = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentChangesObserveArguments() (*OAContentChangesObserveArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentChangesObserveArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "cursor":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Cursor = x
+			case "max_changes":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.MaxChanges = x
+			case "wait_ms":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.WaitMs = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentChangesListArguments() (*OAContentChangesListArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentChangesListArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "continuation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Continuation = x
+			case "limit":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Limit = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
 		return nil, r.refuse("missing_field")
 	}
 	return v, nil
@@ -2112,6 +4169,360 @@ func (r *reader) decodeOAContentReaderCloseResult() (*OAContentReaderCloseResult
 	return v, nil
 }
 
+func (r *reader) decodeOAContentWriterBeginResult() (*OAContentWriterBeginResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentWriterBeginResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeBeginResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentWriterAppendResult() (*OAContentWriterAppendResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentWriterAppendResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeAppendResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentWriterCommitResult() (*OAContentWriterCommitResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentWriterCommitResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeCommitResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentWriterAbortResult() (*OAContentWriterAbortResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentWriterAbortResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeAbortResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentChangesObserveResult() (*OAContentChangesObserveResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentChangesObserveResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeChangePage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentChangesListResult() (*OAContentChangesListResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &OAContentChangesListResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeListingPage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func Decode(in []byte) (*OpenResult, error) {
 	r := &reader{buf: in}
 	r.ws()
@@ -2237,6 +4648,16 @@ func servicePayload(frame []byte) (*OAServiceFrame, error) {
 		return nil, DispatchError("unknown_version")
 	}
 	return v, nil
+}
+
+// ServiceName validates the request envelope and version for routing. The chosen
+// generated dispatcher validates service, method and typed arguments before use.
+func ServiceName(frame []byte) (string, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return "", err
+	}
+	return v.Service, nil
 }
 
 // ExchangeFrame returns the response associated with this call. Correlation,
@@ -2625,6 +5046,626 @@ func (d *ContentReaderDispatcher) invokeClose(args *OAContentReaderCloseArgument
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentReaderCloseResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+	}
+	return
+}
+
+type ContentWriter interface {
+	Begin(string, string, int64) (BeginResult, error)
+	Append(string, int64, []byte) (AppendResult, error)
+	Commit(string) (CommitResult, error)
+	Abort(string) (AbortResult, error)
+}
+type ContentWriterTransport interface {
+	FrameExchanger
+}
+type ContentWriterClient struct{ transport ContentWriterTransport }
+
+func NewContentWriterClient(t ContentWriterTransport) *ContentWriterClient {
+	return &ContentWriterClient{transport: t}
+}
+
+type ContentWriterDispatcher struct{ Handler ContentWriter }
+
+func (c *ContentWriterClient) Begin(arg0 string, arg1 string, arg2 int64) (result BeginResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := OAContentWriterBeginArguments{Request: arg0, Digest: arg1, Size: arg2}
+	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Begin", Arguments: Raw(encOAContentWriterBeginArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *OAContentWriterBeginResult
+	decoded, err = r.decodeOAContentWriterBeginResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ContentWriterClient) Append(arg0 string, arg1 int64, arg2 []byte) (result AppendResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := OAContentWriterAppendArguments{Handle: arg0, Offset: arg1, Data: arg2}
+	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Append", Arguments: Raw(encOAContentWriterAppendArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *OAContentWriterAppendResult
+	decoded, err = r.decodeOAContentWriterAppendResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ContentWriterClient) Commit(arg0 string) (result CommitResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := OAContentWriterCommitArguments{Handle: arg0}
+	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Commit", Arguments: Raw(encOAContentWriterCommitArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *OAContentWriterCommitResult
+	decoded, err = r.decodeOAContentWriterCommitResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ContentWriterClient) Abort(arg0 string) (result AbortResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := OAContentWriterAbortArguments{Handle: arg0}
+	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Abort", Arguments: Raw(encOAContentWriterAbortArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *OAContentWriterAbortResult
+	decoded, err = r.decodeOAContentWriterAbortResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (d *ContentWriterDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.storage/content-writer@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Begin":
+		return DispatchError("wrong_mode")
+	case "Append":
+		return DispatchError("wrong_mode")
+	case "Commit":
+		return DispatchError("wrong_mode")
+	case "Abort":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *ContentWriterDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service != "abstraction.storage/content-writer@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Begin":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAContentWriterBeginArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeBegin(args)
+		return serviceReply(v, payload, err)
+	case "Append":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAContentWriterAppendArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeAppend(args)
+		return serviceReply(v, payload, err)
+	case "Commit":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAContentWriterCommitArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeCommit(args)
+		return serviceReply(v, payload, err)
+	case "Abort":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAContentWriterAbortArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeAbort(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *ContentWriterDispatcher) invokeBegin(args *OAContentWriterBeginArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: "invalid_result"}
+			} else {
+				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+			}
+		}
+	}()
+	var result BeginResult
+	result, err = d.Handler.Begin(args.Request, args.Digest, args.Size)
+	if err != nil {
+		return
+	}
+	value := OAContentWriterBeginResult{Value: result}
+	payload = Raw(encOAContentWriterBeginResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAContentWriterBeginResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+	}
+	return
+}
+func (d *ContentWriterDispatcher) invokeAppend(args *OAContentWriterAppendArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: "invalid_result"}
+			} else {
+				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+			}
+		}
+	}()
+	var result AppendResult
+	result, err = d.Handler.Append(args.Handle, args.Offset, args.Data)
+	if err != nil {
+		return
+	}
+	value := OAContentWriterAppendResult{Value: result}
+	payload = Raw(encOAContentWriterAppendResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAContentWriterAppendResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+	}
+	return
+}
+func (d *ContentWriterDispatcher) invokeCommit(args *OAContentWriterCommitArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: "invalid_result"}
+			} else {
+				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+			}
+		}
+	}()
+	var result CommitResult
+	result, err = d.Handler.Commit(args.Handle)
+	if err != nil {
+		return
+	}
+	value := OAContentWriterCommitResult{Value: result}
+	payload = Raw(encOAContentWriterCommitResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAContentWriterCommitResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+	}
+	return
+}
+func (d *ContentWriterDispatcher) invokeAbort(args *OAContentWriterAbortArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: "invalid_result"}
+			} else {
+				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+			}
+		}
+	}()
+	var result AbortResult
+	result, err = d.Handler.Abort(args.Handle)
+	if err != nil {
+		return
+	}
+	value := OAContentWriterAbortResult{Value: result}
+	payload = Raw(encOAContentWriterAbortResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAContentWriterAbortResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+	}
+	return
+}
+
+type ContentChanges interface {
+	Observe(string, int64, int64) (ChangePage, error)
+	List(string, int64) (ListingPage, error)
+}
+type ContentChangesTransport interface {
+	FrameExchanger
+}
+type ContentChangesClient struct{ transport ContentChangesTransport }
+
+func NewContentChangesClient(t ContentChangesTransport) *ContentChangesClient {
+	return &ContentChangesClient{transport: t}
+}
+
+type ContentChangesDispatcher struct{ Handler ContentChanges }
+
+func (c *ContentChangesClient) Observe(arg0 string, arg1 int64, arg2 int64) (result ChangePage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := OAContentChangesObserveArguments{Cursor: arg0, MaxChanges: arg1, WaitMs: arg2}
+	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-changes@1", Method: "Observe", Arguments: Raw(encOAContentChangesObserveArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *OAContentChangesObserveResult
+	decoded, err = r.decodeOAContentChangesObserveResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ContentChangesClient) List(arg0 string, arg1 int64) (result ListingPage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := OAContentChangesListArguments{Continuation: arg0, Limit: arg1}
+	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-changes@1", Method: "List", Arguments: Raw(encOAContentChangesListArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *OAContentChangesListResult
+	decoded, err = r.decodeOAContentChangesListResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (d *ContentChangesDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.storage/content-changes@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Observe":
+		return DispatchError("wrong_mode")
+	case "List":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *ContentChangesDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service != "abstraction.storage/content-changes@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Observe":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAContentChangesObserveArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeObserve(args)
+		return serviceReply(v, payload, err)
+	case "List":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAContentChangesListArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeList(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *ContentChangesDispatcher) invokeObserve(args *OAContentChangesObserveArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: "invalid_result"}
+			} else {
+				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+			}
+		}
+	}()
+	var result ChangePage
+	result, err = d.Handler.Observe(args.Cursor, args.MaxChanges, args.WaitMs)
+	if err != nil {
+		return
+	}
+	value := OAContentChangesObserveResult{Value: result}
+	payload = Raw(encOAContentChangesObserveResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAContentChangesObserveResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: "invalid_result"}
+	}
+	return
+}
+func (d *ContentChangesDispatcher) invokeList(args *OAContentChangesListArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: "invalid_result"}
+			} else {
+				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+			}
+		}
+	}()
+	var result ListingPage
+	result, err = d.Handler.List(args.Continuation, args.Limit)
+	if err != nil {
+		return
+	}
+	value := OAContentChangesListResult{Value: result}
+	payload = Raw(encOAContentChangesListResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAContentChangesListResult(); e != nil {
 		payload = ""
 		err = &ServiceError{Code: "invalid_result"}
 		return

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	casapi "github.com/openabstractions/abstraction-cas/go/api"
 	identity "github.com/openabstractions/abstraction-identity"
 	"github.com/openabstractions/abstraction-identity/listen"
 	storage "github.com/openabstractions/abstraction-storage/go"
@@ -20,6 +21,9 @@ const MaxFrameBytes = 1 << 20
 
 type Host struct {
 	registry  *registry
+	writers   *writers
+	changes   *changeJournal
+	interval  time.Duration
 	listener  listen.Listener
 	owner     string
 	ctx       context.Context
@@ -55,8 +59,92 @@ func Listen(endpoint string, store storage.Store, policy Policy) (*Host, error) 
 }
 func (h *Host) Close() error {
 	var e error
-	h.once.Do(func() { h.cancel(); e = h.listener.Close(); h.registry.close() })
+	h.once.Do(func() {
+		h.cancel()
+		e = h.listener.Close()
+		h.registry.close()
+		h.lifecycle.Lock()
+		writers, changes := h.writers, h.changes
+		h.lifecycle.Unlock()
+		if writers != nil {
+			writers.close()
+		}
+		if changes != nil {
+			changes.close()
+		}
+	})
 	return e
+}
+
+// EnableChanges adds abstraction.storage/content-changes@1 to this endpoint.
+// observe authorizes each Observe and List call on ChangesResource; the read
+// policy filters every change and listed object per digest. The present objects
+// of a Lister provider are recorded without being journaled, and the provider is
+// polled every interval for external additions and deletions. capacity bounds
+// the journal. Configure it before Serve.
+func (h *Host) EnableChanges(observe Policy, interval time.Duration, capacity int) error {
+	h.lifecycle.Lock()
+	defer h.lifecycle.Unlock()
+	if h.serving || h.ctx.Err() != nil {
+		return errors.New("storage: configure change observation before Serve")
+	}
+	if observe == nil || capacity < 1 || interval <= 0 {
+		return errChangesUnsupported
+	}
+	journal, err := newChangeJournal(h.registry.store, h.registry.policy, observe, capacity)
+	if err != nil {
+		return err
+	}
+	h.changes, h.interval = journal, interval
+	return nil
+}
+
+// ChangesAvailable reports whether change observation is configured and serving.
+func (h *Host) ChangesAvailable() bool {
+	h.lifecycle.Lock()
+	defer h.lifecycle.Unlock()
+	return h.changes != nil && h.ctx.Err() == nil
+}
+
+// EnableWriter adds abstraction.storage/content-writer@1 to this endpoint. The
+// configured store must supply Local and Writable. The write policy is separate
+// from the read policy; limit is the maximum declared object size in bytes.
+// records is service-owned atomic state at the absolute recordPath; this host
+// must be its only writer. Existing identities are restored and staging left by
+// their unfinished uploads is removed before this returns.
+func (h *Host) EnableWriter(policy Policy, limit int64, records casapi.Store, recordPath string) error {
+	h.lifecycle.Lock()
+	defer h.lifecycle.Unlock()
+	if h.serving || h.ctx.Err() != nil {
+		return errors.New("storage: configure writer before Serve")
+	}
+	if policy == nil || limit < 1 || records == nil || !filepath.IsAbs(recordPath) {
+		return errors.New("storage: explicit write policy, positive size limit and service-owned record store required")
+	}
+	store, ok := h.registry.store.(WritableStore)
+	if !ok {
+		return errors.New("storage: provider does not support bounded writes")
+	}
+	w, err := newWriters(store, policy, limit, records, recordPath, time.Now)
+	if err != nil {
+		return err
+	}
+	w.report = func(err error) {
+		if h.OnError != nil {
+			h.OnError(err)
+		}
+	}
+	w.failed(w.unreported)
+	w.unreported = nil
+	h.writers = w
+	return nil
+}
+
+// WriterAvailable reports whether the writer profile is configured and serving.
+func (h *Host) WriterAvailable() bool {
+	h.lifecycle.Lock()
+	defer h.lifecycle.Unlock()
+	return h.writers != nil && h.ctx.Err() == nil
 }
 func (h *Host) Serve(ctx context.Context) error {
 	h.lifecycle.Lock()
@@ -65,7 +153,30 @@ func (h *Host) Serve(ctx context.Context) error {
 		return errors.New("storage: host already served")
 	}
 	h.serving = true
+	writers, changes, interval := h.writers, h.changes, h.interval
 	h.lifecycle.Unlock()
+	if writers != nil && changes != nil {
+		writers.mu.Lock()
+		writers.onCommitted = changes.committed
+		writers.mu.Unlock()
+	}
+	if changes != nil {
+		h.workers.Add(1)
+		go func() {
+			defer h.workers.Done()
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-h.ctx.Done():
+					return
+				case <-ticker.C:
+					changes.poll()
+					changes.sweep()
+				}
+			}
+		}()
+	}
 	stop := context.AfterFunc(ctx, func() { h.Close() })
 	defer stop()
 	defer h.workers.Wait()
@@ -86,6 +197,9 @@ func (h *Host) Serve(ctx context.Context) error {
 				return
 			case <-ticker.C:
 				h.registry.sweep()
+				if writers != nil {
+					writers.sweep()
+				}
 			}
 		}
 	}()
@@ -108,7 +222,8 @@ func (h *Host) Serve(ctx context.Context) error {
 			defer h.workers.Done()
 			defer func() { <-h.slots }()
 			defer conn.Close()
-			callCtx, cancel := context.WithTimeout(h.ctx, 5*time.Second)
+			// Change observation may wait up to 30 seconds; other calls finish well within this budget.
+			callCtx, cancel := context.WithTimeout(h.ctx, 35*time.Second)
 			defer cancel()
 			call, e := listen.ReceiveFramed(callCtx, conn, listen.Program, MaxFrameBytes)
 			if call != nil {
@@ -120,10 +235,18 @@ func (h *Host) Serve(ctx context.Context) error {
 				if proofErr == nil {
 					scope = callerScope(peer, h.owner)
 				}
-				handler := receiver{registry: h.registry, scope: scope, peer: peer, ctx: callCtx}
-				dispatcher := api.ContentReaderDispatcher{Handler: handler}
 				var reply []byte
-				reply, e = dispatcher.ExchangeFrame(call.Frame)
+				if service, nameErr := api.ServiceName(call.Frame); nameErr == nil && service == "abstraction.storage/content-changes@1" && changes != nil {
+					dispatcher := api.ContentChangesDispatcher{Handler: changesReceiver{journal: changes, scope: scope, peer: peer, ctx: callCtx, wait: call.WaitContext()}}
+					reply, e = dispatcher.ExchangeFrame(call.Frame)
+				} else if nameErr == nil && service == "abstraction.storage/content-writer@1" && writers != nil {
+					dispatcher := api.ContentWriterDispatcher{Handler: writeReceiver{writers: writers, scope: scope, peer: peer, ctx: callCtx}}
+					reply, e = dispatcher.ExchangeFrame(call.Frame)
+				} else {
+					// The reader dispatcher refuses unknown or unconfigured services.
+					dispatcher := api.ContentReaderDispatcher{Handler: receiver{registry: h.registry, scope: scope, peer: peer, ctx: callCtx}}
+					reply, e = dispatcher.ExchangeFrame(call.Frame)
+				}
 				if e == nil {
 					e = call.Reply(reply)
 				}

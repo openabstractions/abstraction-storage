@@ -1,6 +1,17 @@
 {
   "name": "@openabstractions/storage-content",
   "version": "0.0.0",
+  "description": "Generated JavaScript client and codecs for policy-authorized content reading by digest.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/openabstractions/abstraction-storage.git",
+    "directory": "javascript"
+  },
+  "homepage": "https://github.com/openabstractions/abstraction-storage#readme",
+  "bugs": {
+    "url": "https://github.com/openabstractions/abstraction-storage/issues"
+  },
   "type": "module",
   "exports": "./js/abstraction/storage/content/rec.mjs",
   "files": [
