@@ -84,7 +84,7 @@ func newChangeJournal(store storage.Store, read, observe Policy, capacity int) (
 }
 
 // appendLocked journals one change and wakes waiters. The caller holds j.mu.
-func (j *changeJournal) appendLocked(kind, digest string, size int64) {
+func (j *changeJournal) appendLocked(kind api.ChangeKind, digest string, size int64) {
 	j.last++
 	j.ring = append(j.ring, api.Change{Sequence: j.last, Kind: kind, Digest: digest, Size: size})
 	if len(j.ring) > j.capacity {
@@ -205,7 +205,7 @@ func (c changesReceiver) readable(digest string) string {
 
 // collect returns a page after the cursor, the journal notification channel
 // observed with it, and a refusal outcome.
-func (c changesReceiver) collect(cursor string, max int64) (api.ChangePage, <-chan struct{}, string) {
+func (c changesReceiver) collect(cursor string, max int64) (api.ChangePage, <-chan struct{}, api.ChangePageOutcome) {
 	j := c.journal
 	j.mu.Lock()
 	if j.closed || !j.listing {
@@ -258,18 +258,18 @@ func (c changesReceiver) collect(cursor string, max int64) (api.ChangePage, <-ch
 		}
 	}
 	page.Next = epoch + ":" + strconv.FormatInt(advanced, 10)
-	return page, notify, ""
+	return page, notify, 0
 }
 
 func (c changesReceiver) Observe(cursor string, maxChanges, waitMS int64) (api.ChangePage, error) {
-	refusal := func(outcome string) (api.ChangePage, error) {
+	refusal := func(outcome api.ChangePageOutcome) (api.ChangePage, error) {
 		return api.ChangePage{Outcome: outcome, Changes: []api.Change{}, Next: cursor}, nil
 	}
 	if len(cursor) > 256 || maxChanges < 1 || maxChanges > MaxChangePage || waitMS < 0 || waitMS > 30000 {
 		return refusal(api.ChangePageOutcomeInvalid)
 	}
 	if status := c.authorization(); status != "" {
-		return refusal(status)
+		return refusal(changePageOutcome(status))
 	}
 	start := cursor
 	if start == "" {
@@ -279,7 +279,7 @@ func (c changesReceiver) Observe(cursor string, maxChanges, waitMS int64) (api.C
 		j.mu.Unlock()
 	}
 	page, notify, status := c.collect(start, maxChanges)
-	if status != "" {
+	if status != 0 {
 		return refusal(status)
 	}
 	if len(page.Changes) == 0 && page.AtEnd && waitMS > 0 {
@@ -299,26 +299,26 @@ func (c changesReceiver) Observe(cursor string, maxChanges, waitMS int64) (api.C
 		if c.wait.Err() != nil {
 			return refusal(api.ChangePageOutcomeUnavailable)
 		}
-		if page, _, status = c.collect(page.Next, maxChanges); status != "" {
+		if page, _, status = c.collect(page.Next, maxChanges); status != 0 {
 			return refusal(status)
 		}
 	}
 	// Recheck observe authorization before any change is returned.
 	if status := c.authorization(); status != "" {
-		return refusal(status)
+		return refusal(changePageOutcome(status))
 	}
 	return page, nil
 }
 
 func (c changesReceiver) List(continuation string, limit int64) (api.ListingPage, error) {
-	refusal := func(outcome string) (api.ListingPage, error) {
+	refusal := func(outcome api.ListingOutcome) (api.ListingPage, error) {
 		return api.ListingPage{Outcome: outcome, Objects: []api.ListedObject{}}, nil
 	}
 	if len(continuation) > 256 || limit < 1 || limit > MaxChangePage {
 		return refusal(api.ListingOutcomeInvalid)
 	}
 	if status := c.authorization(); status != "" {
-		return refusal(status)
+		return refusal(listingOutcome(status))
 	}
 	j := c.journal
 	j.sweep()
@@ -389,7 +389,7 @@ func (c changesReceiver) List(continuation string, limit int64) (api.ListingPage
 		page.Continuation = id + ":" + strconv.Itoa(index)
 	}
 	if status := c.authorization(); status != "" {
-		return refusal(status)
+		return refusal(listingOutcome(status))
 	}
 	return page, nil
 }

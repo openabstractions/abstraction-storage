@@ -74,13 +74,13 @@ func (w *Writer) Begin(ctx context.Context, request, digest string, size int64) 
 	if e != nil {
 		return api.BeginResult{}, e
 	}
-	storedOutcome := r.Outcome == "committed" || r.Outcome == "present"
+	storedOutcome := r.Outcome == api.BeginOutcomeCommitted || r.Outcome == api.BeginOutcomePresent
 	switch {
-	case (r.Outcome == "started") != (r.Upload != nil), storedOutcome != (r.Stored != nil), r.Limit < 0:
+	case (r.Outcome == api.BeginOutcomeStarted) != (r.Upload != nil), storedOutcome != (r.Stored != nil), r.Limit < 0:
 		return api.BeginResult{}, errors.New("storage: inconsistent begin result")
 	case r.Upload != nil && (!validUpload(*r.Upload) || r.Upload.Digest != digest || r.Upload.Size != size):
 		return api.BeginResult{}, errors.New("storage: inconsistent upload")
-	case r.Stored != nil && (r.Stored.Digest != digest || (r.Outcome == "committed") != (r.Stored.Evidence == "hashed") || r.Outcome == "committed" && r.Stored.Size != size):
+	case r.Stored != nil && (r.Stored.Digest != digest || (r.Outcome == api.BeginOutcomeCommitted) != (r.Stored.Evidence == api.EvidenceHashed) || r.Outcome == api.BeginOutcomeCommitted && r.Stored.Size != size):
 		return api.BeginResult{}, errors.New("storage: inconsistent stored result")
 	}
 	return r, nil
@@ -99,11 +99,11 @@ func (w *Writer) Append(ctx context.Context, upload Upload, offset int64, data [
 		return api.AppendResult{}, e
 	}
 	switch r.Outcome {
-	case "accepted":
+	case api.AppendOutcomeAccepted:
 		if r.Received != offset+n || r.Received > upload.Size {
 			return api.AppendResult{}, errors.New("storage: inconsistent append result")
 		}
-	case "out_of_order", "too_large":
+	case api.AppendOutcomeOutOfOrder, api.AppendOutcomeTooLarge:
 		if r.Received < 0 || r.Received > upload.Size {
 			return api.AppendResult{}, errors.New("storage: inconsistent append result")
 		}
@@ -126,8 +126,8 @@ func (w *Writer) Commit(ctx context.Context, upload Upload) (api.CommitResult, e
 	if e != nil {
 		return api.CommitResult{}, e
 	}
-	if (r.Outcome == "committed") != (r.Stored != nil) || r.Stored != nil && (r.Stored.Digest != upload.Digest || r.Stored.Size != upload.Size || r.Stored.Evidence != "hashed") ||
-		r.Outcome != "incomplete" && r.Received != 0 || r.Received < 0 || r.Received > upload.Size {
+	if (r.Outcome == api.CommitOutcomeCommitted) != (r.Stored != nil) || r.Stored != nil && (r.Stored.Digest != upload.Digest || r.Stored.Size != upload.Size || r.Stored.Evidence != api.EvidenceHashed) ||
+		r.Outcome != api.CommitOutcomeIncomplete && r.Received != 0 || r.Received < 0 || r.Received > upload.Size {
 		return api.CommitResult{}, errors.New("storage: inconsistent commit result")
 	}
 	return r, nil
@@ -152,11 +152,11 @@ func (w *Writer) Write(ctx context.Context, request, digest string, content io.R
 		return Stored{}, err
 	}
 	switch begun.Outcome {
-	case "committed", "present":
+	case api.BeginOutcomeCommitted, api.BeginOutcomePresent:
 		return *begun.Stored, nil
-	case "started":
+	case api.BeginOutcomeStarted:
 	default:
-		return Stored{}, &OutcomeError{"begin", begun.Outcome}
+		return Stored{}, &OutcomeError{"begin", begun.Outcome.String()}
 	}
 	upload := *begun.Upload
 	buffer := make([]byte, MaxAppendBytes)
@@ -174,18 +174,18 @@ func (w *Writer) Write(ctx context.Context, request, digest string, content io.R
 			return Stored{}, err
 		}
 		switch appended.Outcome {
-		case "accepted", "out_of_order":
+		case api.AppendOutcomeAccepted, api.AppendOutcomeOutOfOrder:
 			offset = appended.Received
 		default:
-			return Stored{}, &OutcomeError{"append", appended.Outcome}
+			return Stored{}, &OutcomeError{"append", appended.Outcome.String()}
 		}
 	}
 	committed, err := w.Commit(ctx, upload)
 	if err != nil {
 		return Stored{}, err
 	}
-	if committed.Outcome != "committed" {
-		return Stored{}, &OutcomeError{"commit", committed.Outcome}
+	if committed.Outcome != api.CommitOutcomeCommitted {
+		return Stored{}, &OutcomeError{"commit", committed.Outcome.String()}
 	}
 	return *committed.Stored, nil
 }

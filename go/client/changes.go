@@ -122,7 +122,7 @@ func (c *Changes) Snapshot(ctx context.Context, limit int64) ([]ListedObject, st
 			return nil, "", err
 		}
 		if p.Outcome != api.ListingOutcomePage {
-			return nil, "", &OutcomeError{"list", p.Outcome}
+			return nil, "", &OutcomeError{"list", p.Outcome.String()}
 		}
 		if cursor != "" && p.Cursor != cursor {
 			return nil, "", errors.New("storage: snapshot cursor changed between pages")

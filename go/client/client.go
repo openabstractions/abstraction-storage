@@ -33,7 +33,7 @@ func validDigest(d string) bool {
 	return true
 }
 func validResource(r Resource) bool {
-	return r.Handle != "" && len(r.Handle) <= 128 && r.Size >= 0 && r.Verification == "unverified" && validDigest(r.Digest)
+	return r.Handle != "" && len(r.Handle) <= 128 && r.Size >= 0 && r.Verification == api.VerificationUnverified && validDigest(r.Digest)
 }
 func (c *Client) Open(ctx context.Context, digest string) (api.OpenResult, error) {
 	if !validDigest(digest) {
@@ -46,7 +46,7 @@ func (c *Client) Open(ctx context.Context, digest string) (api.OpenResult, error
 	if e != nil {
 		return api.OpenResult{}, e
 	}
-	if (r.Outcome == "opened") != (r.Resource != nil) || r.Resource != nil && (!validResource(*r.Resource) || r.Resource.Digest != digest) {
+	if (r.Outcome == api.OpenOutcomeOpened) != (r.Resource != nil) || r.Resource != nil && (!validResource(*r.Resource) || r.Resource.Digest != digest) {
 		return api.OpenResult{}, errors.New("storage: inconsistent open result")
 	}
 	return r, nil
@@ -68,7 +68,7 @@ func (c *Client) Read(ctx context.Context, resource Resource, offset, maxBytes i
 	return r, nil
 }
 func validateRead(r api.ReadResult, resource Resource, offset, maxBytes int64) error {
-	if (r.Outcome == "data") != (r.Chunk != nil) {
+	if (r.Outcome == api.ReadOutcomeData) != (r.Chunk != nil) {
 		return errors.New("storage: inconsistent read outcome")
 	}
 	if r.Chunk == nil {
@@ -76,7 +76,7 @@ func validateRead(r api.ReadResult, resource Resource, offset, maxBytes int64) e
 	}
 	c := r.Chunk
 	n := int64(len(c.Data))
-	if c.Offset != offset || c.Total != resource.Size || n > maxBytes || n > resource.Size-offset || c.Eof != (offset+n == resource.Size) || (n == 0 && !c.Eof) {
+	if c.Offset != offset || c.Total != resource.Size || n > maxBytes || n > resource.Size-offset || c.EOF != (offset+n == resource.Size) || (n == 0 && !c.EOF) {
 		return errors.New("storage: inconsistent content chunk")
 	}
 	return nil

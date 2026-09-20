@@ -3,18 +3,18 @@
 Install the current abstraction-storage-content package with the facade storage
 extra and shared IPC package. `Machine().resolve_storage(scope="local")` selects
 one authorized content reader; absence and authorization refusals are explicit.
-`Open`, `Read`, `Close` use generated request/reply codecs. `Copy(resource, writer)`
+`open`, `read`, `close` use generated request/reply codecs. `copy(resource, writer)`
 streams at most 64 KiB per request under one total wait budget and reports partial
 confirmed writes through CopyError. A cancelled wait leaves the resource open;
-Close remains explicit and is permitted after authorization revocation.
+close remains explicit and is permitted after authorization revocation.
 
 `Machine().resolve_storage_writer(scope="local")` selects the separate content
-writer. `Begin`, `Append`, `Commit` and `Abort` validate inputs before any
+writer. `begin`, `append`, `commit` and `abort` validate inputs before any
 exchange and check result consistency; write authorization remains the
-service's decision. `Write(request, digest, data)` uploads at most 64 KiB per
+service's decision. `write(request, digest, data)` uploads at most 64 KiB per
 append under one total wait budget and raises OutcomeError on a non-success
 outcome. Keep the request identity from `new_request_id()`: retrying the same
-identity resumes a live upload or returns its committed result, and Write never
+identity resumes a live upload or returns its committed result, and write never
 aborts.
 
 Resources contain opaque handles, naming digests and observed sizes. Content is

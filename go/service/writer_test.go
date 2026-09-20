@@ -138,7 +138,7 @@ func (k writerCase) put(t *testing.T, handle string, body []byte, from int) {
 	for offset := from; offset < len(body); {
 		end := min(offset+MaxAppendBytes, len(body))
 		r, _ := k.c.Append(handle, int64(offset), body[offset:end])
-		if r.Outcome != "accepted" || r.Received != int64(end) {
+		if r.Outcome.String() != "accepted" || r.Received != int64(end) {
 			t.Fatalf("append %d: %+v", offset, r)
 		}
 		offset = end
@@ -151,36 +151,36 @@ func TestWriterCommitIsAtomicAndIdempotent(t *testing.T) {
 	digest := named(body)
 	request := strings.Repeat("r", 32)
 	begun, _ := k.c.Begin(request, digest, int64(len(body)))
-	if begun.Outcome != "started" || begun.Upload == nil || begun.Limit != 1<<20 {
+	if begun.Outcome.String() != "started" || begun.Upload == nil || begun.Limit != 1<<20 {
 		t.Fatal(begun)
 	}
 	handle := begun.Upload.Handle
 	first, _ := k.c.Append(handle, 0, body[:MaxAppendBytes])
-	if first.Outcome != "accepted" {
+	if first.Outcome.String() != "accepted" {
 		t.Fatal(first)
 	}
 	if _, ok := k.store.ContentStore.Find(digest); ok {
 		t.Fatal("staged bytes are findable")
 	}
 	retried, _ := k.c.Begin(request, digest, int64(len(body)))
-	if retried.Outcome != "started" || retried.Upload.Handle != handle || retried.Upload.Received != MaxAppendBytes {
+	if retried.Outcome.String() != "started" || retried.Upload.Handle != handle || retried.Upload.Received != MaxAppendBytes {
 		t.Fatalf("lost Begin reply retry %+v", retried)
 	}
 	skipped, _ := k.c.Append(handle, 0, body[:10])
-	if skipped.Outcome != "out_of_order" || skipped.Received != MaxAppendBytes {
+	if skipped.Outcome.String() != "out_of_order" || skipped.Received != MaxAppendBytes {
 		t.Fatal(skipped)
 	}
 	early, _ := k.c.Commit(handle)
-	if early.Outcome != "incomplete" || early.Received != MaxAppendBytes {
+	if early.Outcome.String() != "incomplete" || early.Received != MaxAppendBytes {
 		t.Fatal(early)
 	}
 	k.put(t, handle, body, MaxAppendBytes)
 	over, _ := k.c.Append(handle, int64(len(body)), []byte("x"))
-	if over.Outcome != "too_large" || over.Received != int64(len(body)) {
+	if over.Outcome.String() != "too_large" || over.Received != int64(len(body)) {
 		t.Fatal(over)
 	}
 	committed, _ := k.c.Commit(handle)
-	if committed.Outcome != "committed" || committed.Stored == nil || committed.Stored.Evidence != "hashed" || committed.Stored.Size != int64(len(body)) {
+	if committed.Outcome.String() != "committed" || committed.Stored == nil || committed.Stored.Evidence.String() != "hashed" || committed.Stored.Size != int64(len(body)) {
 		t.Fatal(committed)
 	}
 	ref, ok := k.store.ContentStore.Find(digest)
@@ -191,23 +191,23 @@ func TestWriterCommitIsAtomicAndIdempotent(t *testing.T) {
 		t.Fatal("committed bytes differ", err)
 	}
 	again, _ := k.c.Commit(handle)
-	if again.Outcome != "gap" {
+	if again.Outcome.String() != "gap" {
 		t.Fatal(again)
 	}
 	duplicate, _ := k.c.Begin(request, digest, int64(len(body)))
-	if duplicate.Outcome != "committed" || duplicate.Stored.Evidence != "hashed" {
+	if duplicate.Outcome.String() != "committed" || duplicate.Stored.Evidence.String() != "hashed" {
 		t.Fatal(duplicate)
 	}
 	conflict, _ := k.c.Begin(request, named([]byte("other")), 5)
-	if conflict.Outcome != "conflict" {
+	if conflict.Outcome.String() != "conflict" {
 		t.Fatal(conflict)
 	}
 	resized, _ := k.c.Begin(request, digest, 1)
-	if resized.Outcome != "conflict" {
+	if resized.Outcome.String() != "conflict" {
 		t.Fatal(resized)
 	}
 	present, _ := k.c.Begin(strings.Repeat("p", 32), digest, int64(len(body)))
-	if present.Outcome != "present" || present.Stored.Evidence != "named" {
+	if present.Outcome.String() != "present" || present.Stored.Evidence.String() != "named" {
 		t.Fatal(present)
 	}
 	if k.blobs(t) != 1 {
@@ -227,55 +227,55 @@ func TestWriterRefusalsHaveNoEffects(t *testing.T) {
 		request, digest string
 		size            int64
 	}{{"short", digest, 1}, {strings.Repeat("a", 129), digest, 1}, {strings.Repeat("a", 15) + "/", digest, 1}, {request, "sha256:AB", 1}, {request, digest, -1}} {
-		if r, _ := k.c.Begin(bad.request, bad.digest, bad.size); r.Outcome != "invalid" {
+		if r, _ := k.c.Begin(bad.request, bad.digest, bad.size); r.Outcome.String() != "invalid" {
 			t.Fatal(bad, r)
 		}
 	}
 	k.allowed.Store(false)
-	if r, _ := k.c.Begin(request, digest, int64(len(body))); r.Outcome != "forbidden" || r.Limit != 0 {
+	if r, _ := k.c.Begin(request, digest, int64(len(body))); r.Outcome.String() != "forbidden" || r.Limit != 0 {
 		t.Fatal(r)
 	}
 	k.allowed.Store(true)
 	k.online.Store(false)
-	if r, _ := k.c.Begin(request, digest, int64(len(body))); r.Outcome != "unavailable" {
+	if r, _ := k.c.Begin(request, digest, int64(len(body))); r.Outcome.String() != "unavailable" {
 		t.Fatal(r)
 	}
 	k.online.Store(true)
 	anonymous := k.c
 	anonymous.scope = ""
-	if r, _ := anonymous.Begin(request, digest, int64(len(body))); r.Outcome != "forbidden" {
+	if r, _ := anonymous.Begin(request, digest, int64(len(body))); r.Outcome.String() != "forbidden" {
 		t.Fatal(r)
 	}
-	if r, _ := k.c.Begin(request, digest, 101); r.Outcome != "too_large" || r.Limit != 100 {
+	if r, _ := k.c.Begin(request, digest, 101); r.Outcome.String() != "too_large" || r.Limit != 100 {
 		t.Fatal(r)
 	}
 	if k.store.finds.Load() != 0 || k.store.places.Load() != 0 {
 		t.Fatal("refused Begin reached provider")
 	}
 	begun, _ := k.c.Begin(request, digest, int64(len(body)))
-	if begun.Outcome != "started" {
+	if begun.Outcome.String() != "started" {
 		t.Fatal(begun)
 	}
 	handle := begun.Upload.Handle
-	if r, _ := k.c.Append(handle, 0, body[:5]); r.Outcome != "accepted" {
+	if r, _ := k.c.Append(handle, 0, body[:5]); r.Outcome.String() != "accepted" {
 		t.Fatal(r)
 	}
 	foreign := k.c
 	foreign.scope = "another-program"
-	if a, _ := foreign.Append(handle, 5, body[5:]); a.Outcome != "forbidden" {
+	if a, _ := foreign.Append(handle, 5, body[5:]); a.Outcome.String() != "forbidden" {
 		t.Fatal(a)
 	}
-	if c, _ := foreign.Commit(handle); c.Outcome != "forbidden" {
+	if c, _ := foreign.Commit(handle); c.Outcome.String() != "forbidden" {
 		t.Fatal(c)
 	}
-	if a, _ := foreign.Abort(handle); a.Outcome != "forbidden" {
+	if a, _ := foreign.Abort(handle); a.Outcome.String() != "forbidden" {
 		t.Fatal(a)
 	}
-	if b, _ := foreign.Begin(request, digest, int64(len(body))); b.Outcome != "busy" {
+	if b, _ := foreign.Begin(request, digest, int64(len(body))); b.Outcome.String() != "busy" {
 		t.Fatal("same digest by another scope", b)
 	}
 	k.allowed.Store(false)
-	if a, _ := k.c.Append(handle, 5, body[5:]); a.Outcome != "forbidden" {
+	if a, _ := k.c.Append(handle, 5, body[5:]); a.Outcome.String() != "forbidden" {
 		t.Fatal(a)
 	}
 	if info, err := os.Stat(k.staging(digest)); err != nil || info.Size() != 5 {
@@ -284,23 +284,23 @@ func TestWriterRefusalsHaveNoEffects(t *testing.T) {
 	k.allowed.Store(true)
 	k.put(t, handle, body, 5)
 	k.allowed.Store(false)
-	if c, _ := k.c.Commit(handle); c.Outcome != "forbidden" {
+	if c, _ := k.c.Commit(handle); c.Outcome.String() != "forbidden" {
 		t.Fatal(c)
 	}
 	if _, ok := k.store.ContentStore.Find(digest); ok {
 		t.Fatal("revoked commit became visible")
 	}
-	if a, _ := k.c.Abort(handle); a.Outcome != "aborted" {
+	if a, _ := k.c.Abort(handle); a.Outcome.String() != "aborted" {
 		t.Fatal("abort after revocation", a)
 	}
 	if _, err := os.Stat(k.staging(digest)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("aborted staging remains", err)
 	}
-	if a, _ := k.c.Append(handle, 0, body); a.Outcome != "gap" {
+	if a, _ := k.c.Append(handle, 0, body); a.Outcome.String() != "gap" {
 		t.Fatal(a)
 	}
 	k.allowed.Store(true)
-	if again, _ := k.c.Begin(request, digest, int64(len(body))); again.Outcome != "started" || again.Upload.Received != 0 {
+	if again, _ := k.c.Begin(request, digest, int64(len(body))); again.Outcome.String() != "started" || again.Upload.Received != 0 {
 		t.Fatal("aborted identity is reusable", again)
 	}
 }
@@ -312,14 +312,14 @@ func TestWriterIdentitySurvivesRestartWithinRetention(t *testing.T) {
 	committed := strings.Repeat("c", 24)
 	begun, _ := k.c.Begin(committed, digest, int64(len(body)))
 	k.put(t, begun.Upload.Handle, body, 0)
-	if r, _ := k.c.Commit(begun.Upload.Handle); r.Outcome != "committed" {
+	if r, _ := k.c.Commit(begun.Upload.Handle); r.Outcome.String() != "committed" {
 		t.Fatal(r)
 	}
 	partial := []byte("interrupted before restart")
 	partialDigest := named(partial)
 	unfinished := strings.Repeat("u", 24)
 	started, _ := k.c.Begin(unfinished, partialDigest, int64(len(partial)))
-	if r, _ := k.c.Append(started.Upload.Handle, 0, partial[:6]); r.Outcome != "accepted" {
+	if r, _ := k.c.Append(started.Upload.Handle, 0, partial[:6]); r.Outcome.String() != "accepted" {
 		t.Fatal(r)
 	}
 	if _, err := os.Stat(k.staging(partialDigest)); err != nil {
@@ -334,31 +334,31 @@ func TestWriterIdentitySurvivesRestartWithinRetention(t *testing.T) {
 		t.Fatal("restart left staging of an unfinished upload", err)
 	}
 	places := k.store.places.Load()
-	if r, _ := k.c.Begin(committed, other, 17); r.Outcome != "conflict" {
+	if r, _ := k.c.Begin(committed, other, 17); r.Outcome.String() != "conflict" {
 		t.Fatal("changed content under a committed identity after restart", r)
 	}
-	if r, _ := k.c.Begin(unfinished, other, 17); r.Outcome != "conflict" {
+	if r, _ := k.c.Begin(unfinished, other, 17); r.Outcome.String() != "conflict" {
 		t.Fatal("changed content under an unfinished identity after restart", r)
 	}
 	if k.store.places.Load() != places {
 		t.Fatal("conflict reached provider placement")
 	}
 	again, _ := k.c.Begin(committed, digest, int64(len(body)))
-	if again.Outcome != "committed" || again.Stored.Evidence != "hashed" || again.Stored.Size != int64(len(body)) {
+	if again.Outcome.String() != "committed" || again.Stored.Evidence.String() != "hashed" || again.Stored.Size != int64(len(body)) {
 		t.Fatal("committed identity lost its result", again)
 	}
 	resumed, _ := k.c.Begin(unfinished, partialDigest, int64(len(partial)))
-	if resumed.Outcome != "started" || resumed.Upload.Received != 0 {
+	if resumed.Outcome.String() != "started" || resumed.Upload.Received != 0 {
 		t.Fatal("unfinished identity did not restart its upload", resumed)
 	}
 	k.put(t, resumed.Upload.Handle, partial, 0)
-	if r, _ := k.c.Commit(resumed.Upload.Handle); r.Outcome != "committed" {
+	if r, _ := k.c.Commit(resumed.Upload.Handle); r.Outcome.String() != "committed" {
 		t.Fatal(r)
 	}
 
 	// Past retention the identity is forgotten and may name new content.
 	k.restart(t, func() time.Time { return restarted.Add(RequestRetention + time.Second) })
-	if r, _ := k.c.Begin(committed, other, 17); r.Outcome != "started" {
+	if r, _ := k.c.Begin(committed, other, 17); r.Outcome.String() != "started" {
 		t.Fatal("expired identity still refused", r)
 	}
 
@@ -367,7 +367,7 @@ func TestWriterIdentitySurvivesRestartWithinRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	places = k.store.places.Load()
-	if r, _ := k.c.Begin(strings.Repeat("f", 24), named([]byte("fenced")), 6); r.Outcome != "unavailable" || k.store.places.Load() != places {
+	if r, _ := k.c.Begin(strings.Repeat("f", 24), named([]byte("fenced")), 6); r.Outcome.String() != "unavailable" || k.store.places.Load() != places {
 		t.Fatal("record file changed by another owner was overwritten", r)
 	}
 
@@ -385,7 +385,7 @@ func TestWriterRecordsCommitIntentBeforePublishing(t *testing.T) {
 	upload := func(request string, body []byte) string {
 		t.Helper()
 		begun, _ := k.c.Begin(request, named(body), int64(len(body)))
-		if begun.Outcome != "started" {
+		if begun.Outcome.String() != "started" {
 			t.Fatal(begun)
 		}
 		k.put(t, begun.Upload.Handle, body, 0)
@@ -397,13 +397,13 @@ func TestWriterRecordsCommitIntentBeforePublishing(t *testing.T) {
 	published := []byte("published while the record volume failed")
 	handle := upload(strings.Repeat("p", 20), published)
 	k.store.beforeCommit = func() error { k.recordStore.fail.Store(true); return nil }
-	if r, _ := k.c.Commit(handle); r.Outcome != "committed" {
+	if r, _ := k.c.Commit(handle); r.Outcome.String() != "committed" {
 		t.Fatal(r)
 	}
 	k.store.beforeCommit = nil
 	k.recordStore.fail.Store(false)
 	k.restart(t, time.Now)
-	if r, _ := k.c.Begin(strings.Repeat("p", 20), named(published), int64(len(published))); r.Outcome != "committed" || r.Stored.Evidence != "hashed" {
+	if r, _ := k.c.Begin(strings.Repeat("p", 20), named(published), int64(len(published))); r.Outcome.String() != "committed" || r.Stored.Evidence.String() != "hashed" {
 		t.Fatal("published result degraded after restart", r)
 	}
 
@@ -412,7 +412,7 @@ func TestWriterRecordsCommitIntentBeforePublishing(t *testing.T) {
 	handle = upload(strings.Repeat("s", 20), unsaved)
 	commits := k.store.commits.Load()
 	k.recordStore.fail.Store(true)
-	if r, _ := k.c.Commit(handle); r.Outcome != "unavailable" || k.store.commits.Load() != commits {
+	if r, _ := k.c.Commit(handle); r.Outcome.String() != "unavailable" || k.store.commits.Load() != commits {
 		t.Fatal("commit published without a recorded intent", r)
 	}
 	k.recordStore.fail.Store(false)
@@ -425,16 +425,16 @@ func TestWriterRecordsCommitIntentBeforePublishing(t *testing.T) {
 	crashed := []byte("intent recorded, publish never happened")
 	handle = upload(strings.Repeat("x", 20), crashed)
 	k.store.beforeCommit = func() error { k.recordStore.fail.Store(true); return errors.New("process ended") }
-	if r, _ := k.c.Commit(handle); r.Outcome != "unavailable" {
+	if r, _ := k.c.Commit(handle); r.Outcome.String() != "unavailable" {
 		t.Fatal(r)
 	}
 	k.store.beforeCommit = nil
 	k.recordStore.fail.Store(false)
 	k.restart(t, time.Now)
-	if r, _ := k.c.Begin(strings.Repeat("x", 20), named(crashed), int64(len(crashed))); r.Outcome != "started" || r.Upload.Received != 0 {
+	if r, _ := k.c.Begin(strings.Repeat("x", 20), named(crashed), int64(len(crashed))); r.Outcome.String() != "started" || r.Upload.Received != 0 {
 		t.Fatal("unpublished recorded result was reported", r)
 	}
-	if r, _ := k.c.Begin(strings.Repeat("x", 20), named(published), int64(len(published))); r.Outcome != "conflict" {
+	if r, _ := k.c.Begin(strings.Repeat("x", 20), named(published), int64(len(published))); r.Outcome.String() != "conflict" {
 		t.Fatal("demoted identity accepted different content", r)
 	}
 }
@@ -445,7 +445,7 @@ func TestWriterMismatchExpiryLimitsAndClose(t *testing.T) {
 	request := strings.Repeat("m", 20)
 	begun, _ := k.c.Begin(request, claimed, 8)
 	k.put(t, begun.Upload.Handle, []byte("tampered"), 0)
-	if c, _ := k.c.Commit(begun.Upload.Handle); c.Outcome != "mismatch" {
+	if c, _ := k.c.Commit(begun.Upload.Handle); c.Outcome.String() != "mismatch" {
 		t.Fatal(c)
 	}
 	if _, ok := k.store.ContentStore.Find(claimed); ok {
@@ -454,7 +454,7 @@ func TestWriterMismatchExpiryLimitsAndClose(t *testing.T) {
 	if _, err := os.Stat(k.staging(claimed)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("mismatch staging remains", err)
 	}
-	if again, _ := k.c.Begin(request, claimed, 8); again.Outcome != "started" {
+	if again, _ := k.c.Begin(request, claimed, 8); again.Outcome.String() != "started" {
 		t.Fatal(again)
 	}
 	now := time.Now()
@@ -468,7 +468,7 @@ func TestWriterMismatchExpiryLimitsAndClose(t *testing.T) {
 	k.w.mu.Lock()
 	k.w.now = func() time.Time { return now.Add(IdleLifetime + time.Second) }
 	k.w.mu.Unlock()
-	if a, _ := k.c.Append(idle.Upload.Handle, 4, body[4:]); a.Outcome != "gap" {
+	if a, _ := k.c.Append(idle.Upload.Handle, 4, body[4:]); a.Outcome.String() != "gap" {
 		t.Fatal("expired upload", a)
 	}
 	if _, err := os.Stat(k.staging(digest)); !errors.Is(err, os.ErrNotExist) {
@@ -476,18 +476,18 @@ func TestWriterMismatchExpiryLimitsAndClose(t *testing.T) {
 	}
 	// Expiry also discarded the earlier restarted upload; this scope is empty.
 	for i := 0; i < MaxUploadsPerScope; i++ {
-		if r, _ := k.c.Begin(fmt.Sprintf("scope-limit-%08d", i), named([]byte{byte(i)}), 1); r.Outcome != "started" {
+		if r, _ := k.c.Begin(fmt.Sprintf("scope-limit-%08d", i), named([]byte{byte(i)}), 1); r.Outcome.String() != "started" {
 			t.Fatal(i, r)
 		}
 	}
-	if r, _ := k.c.Begin("scope-limit-overflow", named([]byte("overflow")), 1); r.Outcome != "exhausted" {
+	if r, _ := k.c.Begin("scope-limit-overflow", named([]byte("overflow")), 1); r.Outcome.String() != "exhausted" {
 		t.Fatal(r)
 	}
 	k.w.close()
 	if entries, err := os.ReadDir(filepath.Join(k.root, "incoming")); err != nil || len(entries) != 0 {
 		t.Fatal("shutdown left staged uploads", len(entries), err)
 	}
-	if r, _ := k.c.Begin(strings.Repeat("z", 20), digest, 1); r.Outcome != "unavailable" {
+	if r, _ := k.c.Begin(strings.Repeat("z", 20), digest, 1); r.Outcome.String() != "unavailable" {
 		t.Fatal(r)
 	}
 	if k.blobs(t) != 0 {

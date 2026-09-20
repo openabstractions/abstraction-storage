@@ -71,7 +71,11 @@ func (w *writers) load() error {
 			w.unreported = errors.Join(w.unreported, w.cleanStaging(e.Digest, e.Size))
 		case "hashed", "named":
 			if _, found := w.store.Find(e.Digest); found {
-				rec.stored = &api.Stored{Digest: e.Digest, Size: e.StoredSize, Evidence: e.Evidence}
+				evidence, ok := api.ParseEvidence(e.Evidence)
+				if !ok {
+					return errors.New("storage: invalid writer record evidence")
+				}
+				rec.stored = &api.Stored{Digest: e.Digest, Size: e.StoredSize, Evidence: evidence}
 			} else {
 				// The result was recorded before a publish that never completed.
 				w.unreported = errors.Join(w.unreported, w.cleanStaging(e.Digest, e.Size))
@@ -122,7 +126,7 @@ func (w *writers) saveLocked() error {
 		scope, request, _ := strings.Cut(key, "\x00")
 		e := recordEntry{Scope: scope, Request: request, Digest: rec.digest, Size: rec.size, Expires: rec.expires.UnixMilli()}
 		if rec.stored != nil {
-			e.Evidence, e.StoredSize = rec.stored.Evidence, rec.stored.Size
+			e.Evidence, e.StoredSize = rec.stored.Evidence.String(), rec.stored.Size
 		}
 		entries = append(entries, e)
 	}

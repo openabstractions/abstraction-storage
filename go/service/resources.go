@@ -123,16 +123,16 @@ func decide(ctx context.Context, scope string, policy Policy, peer *identity.Pee
 	return ""
 }
 func (c receiver) Open(digest string) (api.OpenResult, error) {
-	result := func(s string) (api.OpenResult, error) { return api.OpenResult{Outcome: s}, nil }
+	result := func(s api.OpenOutcome) (api.OpenResult, error) { return api.OpenResult{Outcome: s}, nil }
 	if !validDigest(digest) {
-		return result("invalid")
+		return result(api.OpenOutcomeInvalid)
 	}
 	if status := c.authorization(digest); status != "" {
-		return result(status)
+		return result(openOutcome(status))
 	}
 	local, ok := c.registry.store.(storage.Local)
 	if !ok {
-		return result("unsupported")
+		return result(api.OpenOutcomeUnsupported)
 	}
 	r := c.registry
 	r.sweep()
@@ -149,11 +149,11 @@ func (c receiver) Open(digest string) (api.OpenResult, error) {
 	}
 	if r.closed {
 		r.mu.Unlock()
-		return result("unavailable")
+		return result(api.OpenOutcomeUnavailable)
 	}
 	if total >= MaxResources || count >= MaxPerScope {
 		r.mu.Unlock()
-		return result("exhausted")
+		return result(api.OpenOutcomeExhausted)
 	}
 	r.pending[c.scope]++
 	r.mu.Unlock()
@@ -167,22 +167,22 @@ func (c receiver) Open(digest string) (api.OpenResult, error) {
 	}()
 	ref, found := r.store.Find(digest)
 	if !found {
-		return result("not_found")
+		return result(api.OpenOutcomeNotFound)
 	}
 	if ref.Digest != digest {
-		return result("unsupported")
+		return result(api.OpenOutcomeUnsupported)
 	}
 	path := local.Path(ref)
 	before, e := os.Lstat(path)
 	if e != nil {
-		return result("unavailable")
+		return result(api.OpenOutcomeUnavailable)
 	}
 	if !before.Mode().IsRegular() {
-		return result("unsupported")
+		return result(api.OpenOutcomeUnsupported)
 	}
 	f, e := openRegular(path)
 	if e != nil {
-		return result("unavailable")
+		return result(api.OpenOutcomeUnavailable)
 	}
 	keep := false
 	defer func() {
@@ -192,24 +192,24 @@ func (c receiver) Open(digest string) (api.OpenResult, error) {
 	}()
 	info, e := f.Stat()
 	if e != nil || !info.Mode().IsRegular() || !os.SameFile(before, info) || info.Size() < 0 {
-		return result("unavailable")
+		return result(api.OpenOutcomeUnavailable)
 	}
 	if c.ctx.Err() != nil {
-		return result("unavailable")
+		return result(api.OpenOutcomeUnavailable)
 	}
 	var nonce [24]byte
 	if _, e = rand.Read(nonce[:]); e != nil {
-		return result("unavailable")
+		return result(api.OpenOutcomeUnavailable)
 	}
 	handle := hex.EncodeToString(nonce[:])
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
-		return result("unavailable")
+		return result(api.OpenOutcomeUnavailable)
 	}
 	r.resources[handle] = &resource{file: f, initial: info, digest: digest, scope: c.scope, expires: r.now().Add(IdleLifetime)}
 	keep = true
-	return api.OpenResult{Outcome: "opened", Resource: &api.Resource{Handle: handle, Digest: digest, Size: info.Size(), Verification: "unverified"}}, nil
+	return api.OpenResult{Outcome: api.OpenOutcomeOpened, Resource: &api.Resource{Handle: handle, Digest: digest, Size: info.Size(), Verification: api.VerificationUnverified}}, nil
 }
 func (c receiver) find(handle string) (*resource, string) {
 	r := c.registry
@@ -226,32 +226,32 @@ func (c receiver) find(handle string) (*resource, string) {
 	return v, ""
 }
 func (c receiver) Read(handle string, offset, maxBytes int64) (api.ReadResult, error) {
-	result := func(s string) (api.ReadResult, error) { return api.ReadResult{Outcome: s}, nil }
+	result := func(s api.ReadOutcome) (api.ReadResult, error) { return api.ReadResult{Outcome: s}, nil }
 	if offset < 0 || maxBytes < 1 || maxBytes > 65536 || len(handle) > 128 {
-		return result("invalid")
+		return result(api.ReadOutcomeInvalid)
 	}
 	if c.scope == "" {
-		return result("forbidden")
+		return result(api.ReadOutcomeForbidden)
 	}
 	v, status := c.find(handle)
 	if v == nil {
-		return result(status)
+		return result(readOutcome(status))
 	}
 	if status := c.authorization(v.digest); status != "" {
-		return result(status)
+		return result(readOutcome(status))
 	}
 	r := c.registry
 	r.mu.Lock()
 	if r.resources[handle] != v {
 		r.mu.Unlock()
-		return result("gap")
+		return result(api.ReadOutcomeGap)
 	}
 	v.expires = r.now().Add(IdleLifetime)
 	r.mu.Unlock()
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if v.file == nil {
-		return result("gap")
+		return result(api.ReadOutcomeGap)
 	}
 	changed := func() (api.ReadResult, error) {
 		v.file.Close()
@@ -259,18 +259,18 @@ func (c receiver) Read(handle string, offset, maxBytes int64) (api.ReadResult, e
 		r.mu.Lock()
 		delete(r.resources, handle)
 		r.mu.Unlock()
-		return result("changed")
+		return result(api.ReadOutcomeChanged)
 	}
 	before, e := v.file.Stat()
 	if e != nil {
-		return result("unavailable")
+		return result(api.ReadOutcomeUnavailable)
 	}
 	if before.Size() != v.initial.Size() || !before.ModTime().Equal(v.initial.ModTime()) {
 		return changed()
 	}
 	total := v.initial.Size()
 	if offset > total {
-		return result("invalid")
+		return result(api.ReadOutcomeInvalid)
 	}
 	n := maxBytes
 	if n > total-offset {
@@ -279,36 +279,36 @@ func (c receiver) Read(handle string, offset, maxBytes int64) (api.ReadResult, e
 	data := make([]byte, int(n))
 	read, e := v.file.ReadAt(data, offset)
 	if e != nil && e != io.EOF {
-		return result("unavailable")
+		return result(api.ReadOutcomeUnavailable)
 	}
 	after, e := v.file.Stat()
 	if e != nil {
-		return result("unavailable")
+		return result(api.ReadOutcomeUnavailable)
 	}
 	if after.Size() != total || !after.ModTime().Equal(v.initial.ModTime()) || int64(read) != n {
 		return changed()
 	}
 	if c.ctx.Err() != nil {
-		return result("unavailable")
+		return result(api.ReadOutcomeUnavailable)
 	}
-	return api.ReadResult{Outcome: "data", Chunk: &api.Chunk{Offset: offset, Total: total, Data: data, Eof: offset+n == total}}, nil
+	return api.ReadResult{Outcome: api.ReadOutcomeData, Chunk: &api.Chunk{Offset: offset, Total: total, Data: data, EOF: offset+n == total}}, nil
 }
 func (c receiver) Close(handle string) (api.CloseResult, error) {
 	if c.scope == "" {
-		return api.CloseResult{Outcome: "forbidden"}, nil
+		return api.CloseResult{Outcome: api.CloseOutcomeForbidden}, nil
 	}
 	v, status := c.find(handle)
 	if v == nil {
-		return api.CloseResult{Outcome: status}, nil
+		return api.CloseResult{Outcome: closeOutcome(status)}, nil
 	}
 	r := c.registry
 	r.mu.Lock()
 	if r.resources[handle] != v {
 		r.mu.Unlock()
-		return api.CloseResult{Outcome: "gap"}, nil
+		return api.CloseResult{Outcome: api.CloseOutcomeGap}, nil
 	}
 	delete(r.resources, handle)
 	r.mu.Unlock()
 	v.close()
-	return api.CloseResult{Outcome: "closed"}, nil
+	return api.CloseResult{Outcome: api.CloseOutcomeClosed}, nil
 }

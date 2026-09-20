@@ -28,46 +28,46 @@ func fixture(t *testing.T) (*registry, receiver, string, string) {
 func TestResourceScopeExpiryRevocationAndMutation(t *testing.T) {
 	r, c, d, path := fixture(t)
 	opened, e := c.Open(d)
-	if e != nil || opened.Outcome != "opened" || opened.Resource.Verification != "unverified" {
+	if e != nil || opened.Outcome.String() != "opened" || opened.Resource.Verification.String() != "unverified" {
 		t.Fatal(opened, e)
 	}
 	h := opened.Resource.Handle
 	foreign := c
 	foreign.scope = "another-program"
 	x, _ := foreign.Read(h, 0, 3)
-	if x.Outcome != "forbidden" {
+	if x.Outcome.String() != "forbidden" {
 		t.Fatal(x)
 	}
 	first, _ := c.Read(h, 0, 3)
-	if string(first.Chunk.Data) != "unv" || first.Chunk.Eof {
+	if string(first.Chunk.Data) != "unv" || first.Chunk.EOF {
 		t.Fatal(first)
 	}
 	if e := os.WriteFile(path, []byte("changed and longer fixture bytes"), 0600); e != nil {
 		t.Fatal(e)
 	}
 	changed, _ := c.Read(h, 3, 3)
-	if changed.Outcome != "changed" || changed.Chunk != nil {
+	if changed.Outcome.String() != "changed" || changed.Chunk != nil {
 		t.Fatal(changed)
 	}
 	gap, _ := c.Read(h, 0, 3)
-	if gap.Outcome != "gap" {
+	if gap.Outcome.String() != "gap" {
 		t.Fatal(gap)
 	}
 	opened, _ = c.Open(d)
 	r.policy = func(context.Context, *identity.Peer, string) error { return errors.New("revoked") }
 	denied, _ := c.Read(opened.Resource.Handle, 0, 3)
-	if denied.Outcome != "forbidden" {
+	if denied.Outcome.String() != "forbidden" {
 		t.Fatal(denied)
 	}
 	closed, _ := c.Close(opened.Resource.Handle)
-	if closed.Outcome != "closed" {
+	if closed.Outcome.String() != "closed" {
 		t.Fatal(closed)
 	}
 	r.policy = func(context.Context, *identity.Peer, string) error { return nil }
 	opened, _ = c.Open(d)
 	r.now = func() time.Time { return time.Now().Add(IdleLifetime + time.Second) }
 	expired, _ := c.Read(opened.Resource.Handle, 0, 3)
-	if expired.Outcome != "gap" {
+	if expired.Outcome.String() != "gap" {
 		t.Fatal(expired)
 	}
 }
@@ -84,12 +84,12 @@ func TestPolicyBeforeLookupAndMissingLocal(t *testing.T) {
 	r.store = store
 	r.policy = func(context.Context, *identity.Peer, string) error { return errors.New("denied") }
 	x, _ := c.Open(d)
-	if x.Outcome != "forbidden" || store.finds.Load() != 0 {
+	if x.Outcome.String() != "forbidden" || store.finds.Load() != 0 {
 		t.Fatal(x, store.finds.Load())
 	}
 	r.policy = func(context.Context, *identity.Peer, string) error { return nil }
 	x, _ = c.Open(d)
-	if x.Outcome != "unsupported" || store.finds.Load() != 0 {
+	if x.Outcome.String() != "unsupported" || store.finds.Load() != 0 {
 		t.Fatal(x)
 	}
 	if h, e := Listen("unused", store, nil); e == nil || h != nil {
@@ -100,12 +100,12 @@ func TestResourceLimitsShutdownAndNoCallbackGlobalLock(t *testing.T) {
 	r, c, d, _ := fixture(t)
 	for i := 0; i < MaxPerScope; i++ {
 		x, _ := c.Open(d)
-		if x.Outcome != "opened" {
+		if x.Outcome.String() != "opened" {
 			t.Fatal(x)
 		}
 	}
 	x, _ := c.Open(d)
-	if x.Outcome != "exhausted" {
+	if x.Outcome.String() != "exhausted" {
 		t.Fatal(x)
 	}
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -133,12 +133,12 @@ func TestReadBoundsAndExactEOF(t *testing.T) {
 	opened, _ := c.Open(d)
 	resource := opened.Resource
 	x, _ := c.Read(resource.Handle, resource.Size, 1)
-	if x.Outcome != "data" || !x.Chunk.Eof || len(x.Chunk.Data) != 0 {
+	if x.Outcome.String() != "data" || !x.Chunk.EOF || len(x.Chunk.Data) != 0 {
 		t.Fatal(x)
 	}
 	for _, n := range []int64{-1, 0, 65537} {
 		x, _ = c.Read(resource.Handle, 0, n)
-		if x.Outcome != "invalid" || x.Chunk != nil {
+		if x.Outcome.String() != "invalid" || x.Chunk != nil {
 			t.Fatal(x)
 		}
 	}

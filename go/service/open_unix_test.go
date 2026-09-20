@@ -19,7 +19,7 @@ func TestFIFORefusesWithoutOpening(t *testing.T) {
 		t.Fatal(e)
 	}
 	done := make(chan string, 1)
-	go func() { r, _ := c.Open(d); done <- r.Outcome }()
+	go func() { r, _ := c.Open(d); done <- r.Outcome.String() }()
 	select {
 	case outcome := <-done:
 		if outcome != "unsupported" {

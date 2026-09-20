@@ -129,9 +129,9 @@ later save succeeds.
 Go `client.NewWriter`, `NewRequestID` and `Writer.Begin/Append/Commit/Abort`
 validate result invariants. `Writer.Write` resumes by identity, follows
 `out_of_order` and returns `*OutcomeError` for other service outcomes; it never
-aborts. C++ `storage::Writer` provides the same calls and throws `WriteOutcome`
-from Write. Facade resolution uses `Machine.ResolveStorageWriter` and C++
-`facade::ResolveStorageWriter`. Python, Rust and JavaScript have generated writer
+aborts. C++ `storage::Writer` provides the same calls in snake_case and throws
+`WriteOutcome` from `write`. Facade resolution uses `Machine.ResolveStorageWriter`
+and C++ `facade::resolve_storage_writer`. Python, Rust and JavaScript have generated writer
 codecs only; their writer clients are planned and unproven.
 
 # Change observation
@@ -184,7 +184,15 @@ naming key and grants no access; callers still `Open` and verify content.
 
 Go `client.Changes` (`Observe`, `List`, `Snapshot`) and C++ `storage::Changes`
 validate page shapes. Facade resolution uses `Machine.ResolveStorageChanges` and
-C++ `facade::ResolveStorageChanges`.
+C++ `facade::resolve_storage_changes`.
 
 Cross-account content grants, public release pins,
 remote transports and macOS native Program proof remain separate obligations.
+
+Generated inference output uses bounded, original-subject publication grants on
+`output:speech` and `output:live` under `abstraction.storage/content.write`.
+The runtime preflights the grant before upstream work and returns a single-use
+internal commit capability. Commit rechecks the same resource for revocation,
+verifies digest and size, then commits through the shared content store. These
+grants authorize that generated output; digest-scoped uploads and content reads
+retain their own policy checks.

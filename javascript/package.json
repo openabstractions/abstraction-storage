@@ -13,7 +13,8 @@
     "url": "https://github.com/openabstractions/abstraction-storage/issues"
   },
   "type": "module",
-  "exports": "./js/abstraction/storage/content/rec.mjs",
+  "types": "./js/abstraction/storage/content/index.d.mts",
+  "exports": {".": {"types": "./js/abstraction/storage/content/index.d.mts", "default": "./js/abstraction/storage/content/index.mjs"}, "./internal": "./js/abstraction/storage/content/internal.mjs"},
   "files": [
     "js"
   ],

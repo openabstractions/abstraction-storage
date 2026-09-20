@@ -77,7 +77,7 @@ func TestFramedStorageAndInstalledCPP(t *testing.T) {
 		t.Fatal(read, e)
 	}
 	denied, e := c.Open(ctx, "sha256:"+strings.Repeat("b", 64))
-	if e != nil || denied.Outcome != "forbidden" {
+	if e != nil || denied.Outcome.String() != "forbidden" {
 		t.Fatal(denied, e)
 	}
 	probe := os.Getenv("OA_CPP_STORAGE_PROBE")

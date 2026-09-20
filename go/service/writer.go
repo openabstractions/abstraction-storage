@@ -224,16 +224,18 @@ func (c writeReceiver) authorization(digest string) string {
 
 func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResult, error) {
 	w := c.writers
-	result := func(s string) (api.BeginResult, error) { return api.BeginResult{Outcome: s, Limit: w.limit}, nil }
-	unavailable := api.BeginResult{Outcome: "unavailable"}
+	result := func(s api.BeginOutcome) (api.BeginResult, error) {
+		return api.BeginResult{Outcome: s, Limit: w.limit}, nil
+	}
+	unavailable := api.BeginResult{Outcome: api.BeginOutcomeUnavailable}
 	if !validRequest(request) || !validDigest(digest) || size < 0 {
-		return api.BeginResult{Outcome: "invalid"}, nil
+		return api.BeginResult{Outcome: api.BeginOutcomeInvalid}, nil
 	}
 	if status := c.authorization(digest); status != "" {
-		return api.BeginResult{Outcome: status}, nil
+		return api.BeginResult{Outcome: beginOutcome(status)}, nil
 	}
 	if size > w.limit {
-		return result("too_large")
+		return result(api.BeginOutcomeTooLarge)
 	}
 	w.sweep()
 	key := c.scope + "\x00" + request
@@ -246,22 +248,22 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 	if rec != nil {
 		if rec.digest != digest || rec.size != size {
 			w.mu.Unlock()
-			return result("conflict")
+			return result(api.BeginOutcomeConflict)
 		}
 		if rec.stored != nil && rec.handle == "" {
 			stored := *rec.stored
 			w.mu.Unlock()
 			outcome := "committed"
-			if stored.Evidence == "named" {
+			if stored.Evidence == api.EvidenceNamed {
 				outcome = "present"
 			}
-			return api.BeginResult{Outcome: outcome, Stored: &stored, Limit: w.limit}, nil
+			return api.BeginResult{Outcome: beginOutcome(outcome), Stored: &stored, Limit: w.limit}, nil
 		}
 		if rec.handle != "" {
 			u := w.uploads[rec.handle]
 			if u == nil || !u.ready {
 				w.mu.Unlock()
-				return result("busy")
+				return result(api.BeginOutcomeBusy)
 			}
 			u.expires = w.now().Add(IdleLifetime)
 			w.mu.Unlock()
@@ -277,18 +279,18 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 				}
 				w.mu.Unlock()
 				if stored != nil {
-					return api.BeginResult{Outcome: "committed", Stored: stored, Limit: w.limit}, nil
+					return api.BeginResult{Outcome: api.BeginOutcomeCommitted, Stored: stored, Limit: w.limit}, nil
 				}
-				return result("busy")
+				return result(api.BeginOutcomeBusy)
 			}
-			return api.BeginResult{Outcome: "started", Upload: &api.Upload{Handle: u.handle, Digest: u.digest, Size: u.size, Received: u.received}, Limit: w.limit}, nil
+			return api.BeginResult{Outcome: api.BeginOutcomeStarted, Upload: &api.Upload{Handle: u.handle, Digest: u.digest, Size: u.size, Received: u.received}, Limit: w.limit}, nil
 		}
 		// An unfinished identity from an expired upload or an earlier provider
 		// lifetime starts a new upload of the same content.
 	}
 	if w.digests[digest] != nil {
 		w.mu.Unlock()
-		return result("busy")
+		return result(api.BeginOutcomeBusy)
 	}
 	perScope := 0
 	for _, u := range w.uploads {
@@ -298,7 +300,7 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 	}
 	if len(w.uploads) >= MaxUploads || perScope >= MaxUploadsPerScope || rec == nil && len(w.records) >= MaxRequestRecords {
 		w.mu.Unlock()
-		return result("exhausted")
+		return result(api.BeginOutcomeExhausted)
 	}
 	var nonce [24]byte
 	if _, e := rand.Read(nonce[:]); e != nil {
@@ -332,7 +334,7 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 	w.mu.Lock()
 	if outcome == "present" {
 		w.unlink(u, false)
-		stored := api.Stored{Digest: digest, Size: ref.Size, Evidence: "named"}
+		stored := api.Stored{Digest: digest, Size: ref.Size, Evidence: api.EvidenceNamed}
 		var saveErr error
 		if w.records[key] == rec {
 			rec.stored, rec.expires = &stored, w.now().Add(RequestRetention)
@@ -340,7 +342,7 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 		}
 		w.mu.Unlock()
 		w.failed(saveErr)
-		return api.BeginResult{Outcome: "present", Stored: &stored, Limit: w.limit}, nil
+		return api.BeginResult{Outcome: api.BeginOutcomePresent, Stored: &stored, Limit: w.limit}, nil
 	}
 	if outcome == "" && (w.closed || w.uploads[u.handle] != u || c.ctx.Err() != nil) {
 		outcome = "unavailable"
@@ -358,14 +360,14 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 		if outcome == "unavailable" {
 			return unavailable, nil
 		}
-		return result(outcome)
+		return result(beginOutcome(outcome))
 	}
 	u.mu.Lock()
 	u.file, u.path, u.ref, u.sum, u.ready = file, path, ref, sha256.New(), true
 	u.expires = w.now().Add(IdleLifetime)
 	u.mu.Unlock()
 	w.mu.Unlock()
-	return api.BeginResult{Outcome: "started", Upload: &api.Upload{Handle: u.handle, Digest: digest, Size: size}, Limit: w.limit}, nil
+	return api.BeginResult{Outcome: api.BeginOutcomeStarted, Upload: &api.Upload{Handle: u.handle, Digest: digest, Size: size}, Limit: w.limit}, nil
 }
 
 // prepare runs trusted provider callbacks outside the writer mutex. It creates
@@ -420,43 +422,43 @@ func (c writeReceiver) find(handle string) (*upload, string) {
 }
 
 func (c writeReceiver) Append(handle string, offset int64, data []byte) (api.AppendResult, error) {
-	result := func(s string, received int64) (api.AppendResult, error) {
+	result := func(s api.AppendOutcome, received int64) (api.AppendResult, error) {
 		return api.AppendResult{Outcome: s, Received: received}, nil
 	}
 	if offset < 0 || len(data) < 1 || len(data) > MaxAppendBytes || len(handle) > 128 {
-		return result("invalid", 0)
+		return result(api.AppendOutcomeInvalid, 0)
 	}
 	if c.scope == "" {
-		return result("forbidden", 0)
+		return result(api.AppendOutcomeForbidden, 0)
 	}
 	u, status := c.find(handle)
 	if u == nil {
-		return result(status, 0)
+		return result(appendOutcome(status), 0)
 	}
 	if status := c.authorization(u.digest); status != "" {
-		return result(status, 0)
+		return result(appendOutcome(status), 0)
 	}
 	w := c.writers
 	w.mu.Lock()
 	if w.uploads[handle] != u {
 		w.mu.Unlock()
-		return result("gap", 0)
+		return result(api.AppendOutcomeGap, 0)
 	}
 	u.expires = w.now().Add(IdleLifetime)
 	w.mu.Unlock()
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.done || u.file == nil {
-		return result("gap", 0)
+		return result(api.AppendOutcomeGap, 0)
 	}
 	if offset != u.received {
-		return result("out_of_order", u.received)
+		return result(api.AppendOutcomeOutOfOrder, u.received)
 	}
 	if int64(len(data)) > u.size-u.received {
-		return result("too_large", u.received)
+		return result(api.AppendOutcomeTooLarge, u.received)
 	}
 	if c.ctx.Err() != nil {
-		return result("unavailable", 0)
+		return result(api.AppendOutcomeUnavailable, 0)
 	}
 	n, e := u.file.WriteAt(data, offset)
 	if e == nil && n == len(data) {
@@ -474,38 +476,38 @@ func (c writeReceiver) Append(handle string, offset int64, data []byte) (api.App
 		w.unlink(u, false)
 		w.mu.Unlock()
 		w.failed(cleanup)
-		return result("unavailable", 0)
+		return result(api.AppendOutcomeUnavailable, 0)
 	}
 	u.received += int64(n)
-	return result("accepted", u.received)
+	return result(api.AppendOutcomeAccepted, u.received)
 }
 
 func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
-	result := func(s string) (api.CommitResult, error) { return api.CommitResult{Outcome: s}, nil }
+	result := func(s api.CommitOutcome) (api.CommitResult, error) { return api.CommitResult{Outcome: s}, nil }
 	if len(handle) > 128 {
-		return result("gap")
+		return result(api.CommitOutcomeGap)
 	}
 	if c.scope == "" {
-		return result("forbidden")
+		return result(api.CommitOutcomeForbidden)
 	}
 	u, status := c.find(handle)
 	if u == nil {
-		return result(status)
+		return result(commitOutcome(status))
 	}
 	if status := c.authorization(u.digest); status != "" {
-		return result(status)
+		return result(commitOutcome(status))
 	}
 	w := c.writers
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if u.done || u.file == nil {
-		return result("gap")
+		return result(api.CommitOutcomeGap)
 	}
 	if u.received != u.size {
-		return api.CommitResult{Outcome: "incomplete", Received: u.received}, nil
+		return api.CommitResult{Outcome: api.CommitOutcomeIncomplete, Received: u.received}, nil
 	}
 	if c.ctx.Err() != nil {
-		return result("unavailable")
+		return result(api.CommitOutcomeUnavailable)
 	}
 	drop := func(outcome string, forget bool) (api.CommitResult, error) {
 		var closeErr error
@@ -522,7 +524,7 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 		}
 		w.mu.Unlock()
 		w.failed(errors.Join(cleanup, saveErr))
-		return result(outcome)
+		return result(commitOutcome(outcome))
 	}
 	if "sha256:"+hex.EncodeToString(u.sum.Sum(nil)) != u.digest {
 		return drop("mismatch", true)
@@ -535,7 +537,7 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 		return drop("unavailable", false)
 	}
 	u.file = nil
-	stored := api.Stored{Digest: u.digest, Size: u.size, Evidence: "hashed"}
+	stored := api.Stored{Digest: u.digest, Size: u.size, Evidence: api.EvidenceHashed}
 	// Record the committed result before publishing. A retry after a completed
 	// publish then reads committed even if no later save succeeds. A recorded
 	// result whose content never became findable is demoted here or at startup.
@@ -579,22 +581,22 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 	if committed != nil {
 		committed(u.digest, u.size)
 	}
-	return api.CommitResult{Outcome: "committed", Stored: &stored}, nil
+	return api.CommitResult{Outcome: api.CommitOutcomeCommitted, Stored: &stored}, nil
 }
 
 func (c writeReceiver) Abort(handle string) (api.AbortResult, error) {
 	if c.scope == "" {
-		return api.AbortResult{Outcome: "forbidden"}, nil
+		return api.AbortResult{Outcome: api.AbortOutcomeForbidden}, nil
 	}
 	u, status := c.find(handle)
 	if u == nil {
-		return api.AbortResult{Outcome: status}, nil
+		return api.AbortResult{Outcome: abortOutcome(status)}, nil
 	}
 	w := c.writers
 	w.mu.Lock()
 	if w.uploads[handle] != u {
 		w.mu.Unlock()
-		return api.AbortResult{Outcome: "gap"}, nil
+		return api.AbortResult{Outcome: api.AbortOutcomeGap}, nil
 	}
 	var saveErr error
 	if w.unlink(u, true) && !w.closed {
@@ -602,5 +604,5 @@ func (c writeReceiver) Abort(handle string) (api.AbortResult, error) {
 	}
 	w.mu.Unlock()
 	w.failed(errors.Join(saveErr, u.discard()))
-	return api.AbortResult{Outcome: "aborted"}, nil
+	return api.AbortResult{Outcome: api.AbortOutcomeAborted}, nil
 }

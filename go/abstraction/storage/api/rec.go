@@ -895,12 +895,12 @@ func Decode(in []byte) (*Ref, error) {
 	return v, nil
 }
 
-// Refusals is in the order two of them are chosen between.
+// refusals is in the order two of them are chosen between.
 
-var Refusals = []string{"malformed", "bad_string", "number_spelling", "wrong_type", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "trailing_bytes"}
+var refusals = []string{"malformed", "bad_string", "number_spelling", "wrong_type", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "trailing_bytes"}
 
-func RefusalRank(word string) int {
-	for i, w := range Refusals {
+func refusalRank(word string) int {
+	for i, w := range refusals {
 		if w == word {
 			return i
 		}
@@ -910,14 +910,14 @@ func RefusalRank(word string) int {
 
 type Store interface{
 Name()(string,error)
-Find(string)(FindResult,error)
-Place(string,int64)(Ref,error)
+Find(digest string)(FindResult,error)
+Place(digest string, size int64)(Ref,error)
 }
 
 type Local interface{
-Path(Ref)(string,error)
+Path(reference Ref)(string,error)
 }
 
 type Writable interface{
-Commit(Ref)error
+Commit(reference Ref)error
 }

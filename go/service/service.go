@@ -235,18 +235,16 @@ func (h *Host) Serve(ctx context.Context) error {
 				if proofErr == nil {
 					scope = callerScope(peer, h.owner)
 				}
-				var reply []byte
-				if service, nameErr := api.ServiceName(call.Frame); nameErr == nil && service == "abstraction.storage/content-changes@1" && changes != nil {
-					dispatcher := api.ContentChangesDispatcher{Handler: changesReceiver{journal: changes, scope: scope, peer: peer, ctx: callCtx, wait: call.WaitContext()}}
-					reply, e = dispatcher.ExchangeFrame(call.Frame)
-				} else if nameErr == nil && service == "abstraction.storage/content-writer@1" && writers != nil {
-					dispatcher := api.ContentWriterDispatcher{Handler: writeReceiver{writers: writers, scope: scope, peer: peer, ctx: callCtx}}
-					reply, e = dispatcher.ExchangeFrame(call.Frame)
-				} else {
-					// The reader dispatcher refuses unknown or unconfigured services.
-					dispatcher := api.ContentReaderDispatcher{Handler: receiver{registry: h.registry, scope: scope, peer: peer, ctx: callCtx}}
-					reply, e = dispatcher.ExchangeFrame(call.Frame)
+				// Only the configured services are served; any other reads unknown_service.
+				services := []api.ServedService{&api.ContentReaderDispatcher{Handler: receiver{registry: h.registry, scope: scope, peer: peer, ctx: callCtx}}}
+				if writers != nil {
+					services = append(services, &api.ContentWriterDispatcher{Handler: writeReceiver{writers: writers, scope: scope, peer: peer, ctx: callCtx}})
 				}
+				if changes != nil {
+					services = append(services, &api.ContentChangesDispatcher{Handler: changesReceiver{journal: changes, scope: scope, peer: peer, ctx: callCtx, wait: call.WaitContext()}})
+				}
+				var reply []byte
+				reply, e = api.ServeEndpoint(call.Frame, "openabstractions", "", services...)
 				if e == nil {
 					e = call.Reply(reply)
 				}

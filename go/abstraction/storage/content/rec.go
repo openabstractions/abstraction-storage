@@ -187,6 +187,26 @@ func esc(out []byte, s string) []byte {
 	return append(out, '"')
 }
 
+func strmap(out []byte, m map[string]string, depth int) []byte {
+	keys := sortedKeys(m)
+	if len(keys) == 0 {
+		return append(out, '{', '}')
+	}
+	out = append(out, '{', '\n')
+	for i, k := range keys {
+		out = pad(out, depth+1)
+		out = esc(out, k)
+		out = append(out, ':', ' ')
+		out = esc(out, m[k])
+		if i+1 < len(keys) {
+			out = append(out, ',')
+		}
+		out = append(out, '\n')
+	}
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encList[T any](out []byte, v []T, depth int, enc func([]byte, *T, int) []byte) []byte {
 	if len(v) == 0 {
 		return append(out, '[', ']')
@@ -204,169 +224,2939 @@ func encList[T any](out []byte, v []T, depth int, enc func([]byte, *T, int) []by
 	return append(out, ']')
 }
 
-var VerificationNames = []string{"unverified"}
-
-const VerificationUnverified = "unverified"
-
-const VerificationUnknown = "refuse"
-
-var OpenOutcomeNames = []string{"opened", "not_found", "forbidden", "invalid", "unsupported", "unavailable", "exhausted"}
-
-const OpenOutcomeOpened = "opened"
-
-const OpenOutcomeNotFound = "not_found"
-
-const OpenOutcomeForbidden = "forbidden"
-
-const OpenOutcomeInvalid = "invalid"
-
-const OpenOutcomeUnsupported = "unsupported"
-
-const OpenOutcomeUnavailable = "unavailable"
-
-const OpenOutcomeExhausted = "exhausted"
-
-const OpenOutcomeUnknown = "refuse"
-
-var ReadOutcomeNames = []string{"data", "gap", "forbidden", "invalid", "unavailable", "changed"}
-
-const ReadOutcomeData = "data"
-
-const ReadOutcomeGap = "gap"
-
-const ReadOutcomeForbidden = "forbidden"
-
-const ReadOutcomeInvalid = "invalid"
-
-const ReadOutcomeUnavailable = "unavailable"
-
-const ReadOutcomeChanged = "changed"
-
-const ReadOutcomeUnknown = "refuse"
-
-var CloseOutcomeNames = []string{"closed", "gap", "forbidden"}
-
-const CloseOutcomeClosed = "closed"
-
-const CloseOutcomeGap = "gap"
-
-const CloseOutcomeForbidden = "forbidden"
-
-const CloseOutcomeUnknown = "refuse"
-
-var BeginOutcomeNames = []string{"started", "committed", "present", "forbidden", "invalid", "conflict", "too_large", "busy", "unsupported", "unavailable", "exhausted"}
-
-const BeginOutcomeStarted = "started"
-
-const BeginOutcomeCommitted = "committed"
-
-const BeginOutcomePresent = "present"
-
-const BeginOutcomeForbidden = "forbidden"
-
-const BeginOutcomeInvalid = "invalid"
-
-const BeginOutcomeConflict = "conflict"
-
-const BeginOutcomeTooLarge = "too_large"
-
-const BeginOutcomeBusy = "busy"
-
-const BeginOutcomeUnsupported = "unsupported"
-
-const BeginOutcomeUnavailable = "unavailable"
-
-const BeginOutcomeExhausted = "exhausted"
-
-const BeginOutcomeUnknown = "refuse"
-
-var AppendOutcomeNames = []string{"accepted", "gap", "forbidden", "invalid", "out_of_order", "too_large", "unavailable"}
-
-const AppendOutcomeAccepted = "accepted"
-
-const AppendOutcomeGap = "gap"
-
-const AppendOutcomeForbidden = "forbidden"
-
-const AppendOutcomeInvalid = "invalid"
-
-const AppendOutcomeOutOfOrder = "out_of_order"
-
-const AppendOutcomeTooLarge = "too_large"
-
-const AppendOutcomeUnavailable = "unavailable"
-
-const AppendOutcomeUnknown = "refuse"
-
-var CommitOutcomeNames = []string{"committed", "gap", "forbidden", "incomplete", "mismatch", "unavailable"}
-
-const CommitOutcomeCommitted = "committed"
-
-const CommitOutcomeGap = "gap"
-
-const CommitOutcomeForbidden = "forbidden"
-
-const CommitOutcomeIncomplete = "incomplete"
-
-const CommitOutcomeMismatch = "mismatch"
-
-const CommitOutcomeUnavailable = "unavailable"
-
-const CommitOutcomeUnknown = "refuse"
-
-var AbortOutcomeNames = []string{"aborted", "gap", "forbidden"}
-
-const AbortOutcomeAborted = "aborted"
-
-const AbortOutcomeGap = "gap"
-
-const AbortOutcomeForbidden = "forbidden"
-
-const AbortOutcomeUnknown = "refuse"
-
-var EvidenceNames = []string{"hashed", "named"}
-
-const EvidenceHashed = "hashed"
-
-const EvidenceNamed = "named"
-
-const EvidenceUnknown = "refuse"
-
-var ChangeKindNames = []string{"added", "removed"}
-
-const ChangeKindAdded = "added"
-
-const ChangeKindRemoved = "removed"
-
-const ChangeKindUnknown = "refuse"
-
-var ChangePageOutcomeNames = []string{"page", "gap", "forbidden", "invalid", "unavailable"}
-
-const ChangePageOutcomePage = "page"
-
-const ChangePageOutcomeGap = "gap"
-
-const ChangePageOutcomeForbidden = "forbidden"
-
-const ChangePageOutcomeInvalid = "invalid"
-
-const ChangePageOutcomeUnavailable = "unavailable"
-
-const ChangePageOutcomeUnknown = "refuse"
-
-var ListingOutcomeNames = []string{"page", "gap", "forbidden", "invalid", "unavailable"}
-
-const ListingOutcomePage = "page"
-
-const ListingOutcomeGap = "gap"
-
-const ListingOutcomeForbidden = "forbidden"
-
-const ListingOutcomeInvalid = "invalid"
-
-const ListingOutcomeUnavailable = "unavailable"
-
-const ListingOutcomeUnknown = "refuse"
+// Verification is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseVerification preserve the exact wire words.
+type Verification uint32
+
+const (
+	VerificationUnverified Verification = 1
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v Verification) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v Verification) WireName() (string, bool) {
+	switch v {
+	case VerificationUnverified:
+		return "unverified", true
+	}
+	return "", false
+}
+
+// ParseVerification returns the member named by an exact wire word.
+func ParseVerification(word string) (Verification, bool) {
+	switch word {
+	case "unverified":
+		return VerificationUnverified, true
+	}
+	return Verification(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v Verification) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *Verification) UnmarshalText(text []byte) error {
+	word, ok := ParseVerification(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v Verification) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *Verification) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseVerification(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// VerificationValues returns every member of Verification in declaration order, in a new slice.
+func VerificationValues() []Verification {
+	return []Verification{VerificationUnverified}
+}
+
+// Known reports whether v is a member of Verification.
+func (v Verification) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// OpenOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseOpenOutcome preserve the exact wire words.
+type OpenOutcome uint32
+
+const (
+	OpenOutcomeOpened      OpenOutcome = 1
+	OpenOutcomeNotFound    OpenOutcome = 2
+	OpenOutcomeForbidden   OpenOutcome = 3
+	OpenOutcomeInvalid     OpenOutcome = 4
+	OpenOutcomeUnsupported OpenOutcome = 5
+	OpenOutcomeUnavailable OpenOutcome = 6
+	OpenOutcomeExhausted   OpenOutcome = 7
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v OpenOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v OpenOutcome) WireName() (string, bool) {
+	switch v {
+	case OpenOutcomeOpened:
+		return "opened", true
+	case OpenOutcomeNotFound:
+		return "not_found", true
+	case OpenOutcomeForbidden:
+		return "forbidden", true
+	case OpenOutcomeInvalid:
+		return "invalid", true
+	case OpenOutcomeUnsupported:
+		return "unsupported", true
+	case OpenOutcomeUnavailable:
+		return "unavailable", true
+	case OpenOutcomeExhausted:
+		return "exhausted", true
+	}
+	return "", false
+}
+
+// ParseOpenOutcome returns the member named by an exact wire word.
+func ParseOpenOutcome(word string) (OpenOutcome, bool) {
+	switch word {
+	case "opened":
+		return OpenOutcomeOpened, true
+	case "not_found":
+		return OpenOutcomeNotFound, true
+	case "forbidden":
+		return OpenOutcomeForbidden, true
+	case "invalid":
+		return OpenOutcomeInvalid, true
+	case "unsupported":
+		return OpenOutcomeUnsupported, true
+	case "unavailable":
+		return OpenOutcomeUnavailable, true
+	case "exhausted":
+		return OpenOutcomeExhausted, true
+	}
+	return OpenOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v OpenOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *OpenOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseOpenOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v OpenOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *OpenOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseOpenOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// OpenOutcomeValues returns every member of OpenOutcome in declaration order, in a new slice.
+func OpenOutcomeValues() []OpenOutcome {
+	return []OpenOutcome{OpenOutcomeOpened, OpenOutcomeNotFound, OpenOutcomeForbidden, OpenOutcomeInvalid, OpenOutcomeUnsupported, OpenOutcomeUnavailable, OpenOutcomeExhausted}
+}
+
+// Known reports whether v is a member of OpenOutcome.
+func (v OpenOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// ReadOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseReadOutcome preserve the exact wire words.
+type ReadOutcome uint32
+
+const (
+	ReadOutcomeData        ReadOutcome = 1
+	ReadOutcomeGap         ReadOutcome = 2
+	ReadOutcomeForbidden   ReadOutcome = 3
+	ReadOutcomeInvalid     ReadOutcome = 4
+	ReadOutcomeUnavailable ReadOutcome = 5
+	ReadOutcomeChanged     ReadOutcome = 6
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v ReadOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v ReadOutcome) WireName() (string, bool) {
+	switch v {
+	case ReadOutcomeData:
+		return "data", true
+	case ReadOutcomeGap:
+		return "gap", true
+	case ReadOutcomeForbidden:
+		return "forbidden", true
+	case ReadOutcomeInvalid:
+		return "invalid", true
+	case ReadOutcomeUnavailable:
+		return "unavailable", true
+	case ReadOutcomeChanged:
+		return "changed", true
+	}
+	return "", false
+}
+
+// ParseReadOutcome returns the member named by an exact wire word.
+func ParseReadOutcome(word string) (ReadOutcome, bool) {
+	switch word {
+	case "data":
+		return ReadOutcomeData, true
+	case "gap":
+		return ReadOutcomeGap, true
+	case "forbidden":
+		return ReadOutcomeForbidden, true
+	case "invalid":
+		return ReadOutcomeInvalid, true
+	case "unavailable":
+		return ReadOutcomeUnavailable, true
+	case "changed":
+		return ReadOutcomeChanged, true
+	}
+	return ReadOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v ReadOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *ReadOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseReadOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v ReadOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *ReadOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseReadOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// ReadOutcomeValues returns every member of ReadOutcome in declaration order, in a new slice.
+func ReadOutcomeValues() []ReadOutcome {
+	return []ReadOutcome{ReadOutcomeData, ReadOutcomeGap, ReadOutcomeForbidden, ReadOutcomeInvalid, ReadOutcomeUnavailable, ReadOutcomeChanged}
+}
+
+// Known reports whether v is a member of ReadOutcome.
+func (v ReadOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// CloseOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseCloseOutcome preserve the exact wire words.
+type CloseOutcome uint32
+
+const (
+	CloseOutcomeClosed    CloseOutcome = 1
+	CloseOutcomeGap       CloseOutcome = 2
+	CloseOutcomeForbidden CloseOutcome = 3
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v CloseOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v CloseOutcome) WireName() (string, bool) {
+	switch v {
+	case CloseOutcomeClosed:
+		return "closed", true
+	case CloseOutcomeGap:
+		return "gap", true
+	case CloseOutcomeForbidden:
+		return "forbidden", true
+	}
+	return "", false
+}
+
+// ParseCloseOutcome returns the member named by an exact wire word.
+func ParseCloseOutcome(word string) (CloseOutcome, bool) {
+	switch word {
+	case "closed":
+		return CloseOutcomeClosed, true
+	case "gap":
+		return CloseOutcomeGap, true
+	case "forbidden":
+		return CloseOutcomeForbidden, true
+	}
+	return CloseOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v CloseOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *CloseOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseCloseOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v CloseOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *CloseOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseCloseOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// CloseOutcomeValues returns every member of CloseOutcome in declaration order, in a new slice.
+func CloseOutcomeValues() []CloseOutcome {
+	return []CloseOutcome{CloseOutcomeClosed, CloseOutcomeGap, CloseOutcomeForbidden}
+}
+
+// Known reports whether v is a member of CloseOutcome.
+func (v CloseOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// BeginOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseBeginOutcome preserve the exact wire words.
+type BeginOutcome uint32
+
+const (
+	BeginOutcomeStarted     BeginOutcome = 1
+	BeginOutcomeCommitted   BeginOutcome = 2
+	BeginOutcomePresent     BeginOutcome = 3
+	BeginOutcomeForbidden   BeginOutcome = 4
+	BeginOutcomeInvalid     BeginOutcome = 5
+	BeginOutcomeConflict    BeginOutcome = 6
+	BeginOutcomeTooLarge    BeginOutcome = 7
+	BeginOutcomeBusy        BeginOutcome = 8
+	BeginOutcomeUnsupported BeginOutcome = 9
+	BeginOutcomeUnavailable BeginOutcome = 10
+	BeginOutcomeExhausted   BeginOutcome = 11
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v BeginOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v BeginOutcome) WireName() (string, bool) {
+	switch v {
+	case BeginOutcomeStarted:
+		return "started", true
+	case BeginOutcomeCommitted:
+		return "committed", true
+	case BeginOutcomePresent:
+		return "present", true
+	case BeginOutcomeForbidden:
+		return "forbidden", true
+	case BeginOutcomeInvalid:
+		return "invalid", true
+	case BeginOutcomeConflict:
+		return "conflict", true
+	case BeginOutcomeTooLarge:
+		return "too_large", true
+	case BeginOutcomeBusy:
+		return "busy", true
+	case BeginOutcomeUnsupported:
+		return "unsupported", true
+	case BeginOutcomeUnavailable:
+		return "unavailable", true
+	case BeginOutcomeExhausted:
+		return "exhausted", true
+	}
+	return "", false
+}
+
+// ParseBeginOutcome returns the member named by an exact wire word.
+func ParseBeginOutcome(word string) (BeginOutcome, bool) {
+	switch word {
+	case "started":
+		return BeginOutcomeStarted, true
+	case "committed":
+		return BeginOutcomeCommitted, true
+	case "present":
+		return BeginOutcomePresent, true
+	case "forbidden":
+		return BeginOutcomeForbidden, true
+	case "invalid":
+		return BeginOutcomeInvalid, true
+	case "conflict":
+		return BeginOutcomeConflict, true
+	case "too_large":
+		return BeginOutcomeTooLarge, true
+	case "busy":
+		return BeginOutcomeBusy, true
+	case "unsupported":
+		return BeginOutcomeUnsupported, true
+	case "unavailable":
+		return BeginOutcomeUnavailable, true
+	case "exhausted":
+		return BeginOutcomeExhausted, true
+	}
+	return BeginOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v BeginOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *BeginOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseBeginOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v BeginOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *BeginOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseBeginOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// BeginOutcomeValues returns every member of BeginOutcome in declaration order, in a new slice.
+func BeginOutcomeValues() []BeginOutcome {
+	return []BeginOutcome{BeginOutcomeStarted, BeginOutcomeCommitted, BeginOutcomePresent, BeginOutcomeForbidden, BeginOutcomeInvalid, BeginOutcomeConflict, BeginOutcomeTooLarge, BeginOutcomeBusy, BeginOutcomeUnsupported, BeginOutcomeUnavailable, BeginOutcomeExhausted}
+}
+
+// Known reports whether v is a member of BeginOutcome.
+func (v BeginOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// AppendOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseAppendOutcome preserve the exact wire words.
+type AppendOutcome uint32
+
+const (
+	AppendOutcomeAccepted    AppendOutcome = 1
+	AppendOutcomeGap         AppendOutcome = 2
+	AppendOutcomeForbidden   AppendOutcome = 3
+	AppendOutcomeInvalid     AppendOutcome = 4
+	AppendOutcomeOutOfOrder  AppendOutcome = 5
+	AppendOutcomeTooLarge    AppendOutcome = 6
+	AppendOutcomeUnavailable AppendOutcome = 7
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v AppendOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v AppendOutcome) WireName() (string, bool) {
+	switch v {
+	case AppendOutcomeAccepted:
+		return "accepted", true
+	case AppendOutcomeGap:
+		return "gap", true
+	case AppendOutcomeForbidden:
+		return "forbidden", true
+	case AppendOutcomeInvalid:
+		return "invalid", true
+	case AppendOutcomeOutOfOrder:
+		return "out_of_order", true
+	case AppendOutcomeTooLarge:
+		return "too_large", true
+	case AppendOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseAppendOutcome returns the member named by an exact wire word.
+func ParseAppendOutcome(word string) (AppendOutcome, bool) {
+	switch word {
+	case "accepted":
+		return AppendOutcomeAccepted, true
+	case "gap":
+		return AppendOutcomeGap, true
+	case "forbidden":
+		return AppendOutcomeForbidden, true
+	case "invalid":
+		return AppendOutcomeInvalid, true
+	case "out_of_order":
+		return AppendOutcomeOutOfOrder, true
+	case "too_large":
+		return AppendOutcomeTooLarge, true
+	case "unavailable":
+		return AppendOutcomeUnavailable, true
+	}
+	return AppendOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v AppendOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *AppendOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseAppendOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v AppendOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *AppendOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseAppendOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// AppendOutcomeValues returns every member of AppendOutcome in declaration order, in a new slice.
+func AppendOutcomeValues() []AppendOutcome {
+	return []AppendOutcome{AppendOutcomeAccepted, AppendOutcomeGap, AppendOutcomeForbidden, AppendOutcomeInvalid, AppendOutcomeOutOfOrder, AppendOutcomeTooLarge, AppendOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of AppendOutcome.
+func (v AppendOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// CommitOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseCommitOutcome preserve the exact wire words.
+type CommitOutcome uint32
+
+const (
+	CommitOutcomeCommitted   CommitOutcome = 1
+	CommitOutcomeGap         CommitOutcome = 2
+	CommitOutcomeForbidden   CommitOutcome = 3
+	CommitOutcomeIncomplete  CommitOutcome = 4
+	CommitOutcomeMismatch    CommitOutcome = 5
+	CommitOutcomeUnavailable CommitOutcome = 6
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v CommitOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v CommitOutcome) WireName() (string, bool) {
+	switch v {
+	case CommitOutcomeCommitted:
+		return "committed", true
+	case CommitOutcomeGap:
+		return "gap", true
+	case CommitOutcomeForbidden:
+		return "forbidden", true
+	case CommitOutcomeIncomplete:
+		return "incomplete", true
+	case CommitOutcomeMismatch:
+		return "mismatch", true
+	case CommitOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseCommitOutcome returns the member named by an exact wire word.
+func ParseCommitOutcome(word string) (CommitOutcome, bool) {
+	switch word {
+	case "committed":
+		return CommitOutcomeCommitted, true
+	case "gap":
+		return CommitOutcomeGap, true
+	case "forbidden":
+		return CommitOutcomeForbidden, true
+	case "incomplete":
+		return CommitOutcomeIncomplete, true
+	case "mismatch":
+		return CommitOutcomeMismatch, true
+	case "unavailable":
+		return CommitOutcomeUnavailable, true
+	}
+	return CommitOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v CommitOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *CommitOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseCommitOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v CommitOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *CommitOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseCommitOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// CommitOutcomeValues returns every member of CommitOutcome in declaration order, in a new slice.
+func CommitOutcomeValues() []CommitOutcome {
+	return []CommitOutcome{CommitOutcomeCommitted, CommitOutcomeGap, CommitOutcomeForbidden, CommitOutcomeIncomplete, CommitOutcomeMismatch, CommitOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of CommitOutcome.
+func (v CommitOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// AbortOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseAbortOutcome preserve the exact wire words.
+type AbortOutcome uint32
+
+const (
+	AbortOutcomeAborted   AbortOutcome = 1
+	AbortOutcomeGap       AbortOutcome = 2
+	AbortOutcomeForbidden AbortOutcome = 3
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v AbortOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v AbortOutcome) WireName() (string, bool) {
+	switch v {
+	case AbortOutcomeAborted:
+		return "aborted", true
+	case AbortOutcomeGap:
+		return "gap", true
+	case AbortOutcomeForbidden:
+		return "forbidden", true
+	}
+	return "", false
+}
+
+// ParseAbortOutcome returns the member named by an exact wire word.
+func ParseAbortOutcome(word string) (AbortOutcome, bool) {
+	switch word {
+	case "aborted":
+		return AbortOutcomeAborted, true
+	case "gap":
+		return AbortOutcomeGap, true
+	case "forbidden":
+		return AbortOutcomeForbidden, true
+	}
+	return AbortOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v AbortOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *AbortOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseAbortOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v AbortOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *AbortOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseAbortOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// AbortOutcomeValues returns every member of AbortOutcome in declaration order, in a new slice.
+func AbortOutcomeValues() []AbortOutcome {
+	return []AbortOutcome{AbortOutcomeAborted, AbortOutcomeGap, AbortOutcomeForbidden}
+}
+
+// Known reports whether v is a member of AbortOutcome.
+func (v AbortOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// Evidence is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseEvidence preserve the exact wire words.
+type Evidence uint32
+
+const (
+	EvidenceHashed  Evidence = 1
+	EvidenceNamed   Evidence = 2
+	EvidenceForeign Evidence = 3
+	EvidenceNone    Evidence = 4
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v Evidence) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v Evidence) WireName() (string, bool) {
+	switch v {
+	case EvidenceHashed:
+		return "hashed", true
+	case EvidenceNamed:
+		return "named", true
+	case EvidenceForeign:
+		return "foreign", true
+	case EvidenceNone:
+		return "none", true
+	}
+	return "", false
+}
+
+// ParseEvidence returns the member named by an exact wire word.
+func ParseEvidence(word string) (Evidence, bool) {
+	switch word {
+	case "hashed":
+		return EvidenceHashed, true
+	case "named":
+		return EvidenceNamed, true
+	case "foreign":
+		return EvidenceForeign, true
+	case "none":
+		return EvidenceNone, true
+	}
+	return Evidence(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v Evidence) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *Evidence) UnmarshalText(text []byte) error {
+	word, ok := ParseEvidence(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v Evidence) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *Evidence) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseEvidence(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// EvidenceValues returns every member of Evidence in declaration order, in a new slice.
+func EvidenceValues() []Evidence {
+	return []Evidence{EvidenceHashed, EvidenceNamed, EvidenceForeign, EvidenceNone}
+}
+
+// Known reports whether v is a member of Evidence.
+func (v Evidence) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// ChangeKind is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseChangeKind preserve the exact wire words.
+type ChangeKind uint32
+
+const (
+	ChangeKindAdded   ChangeKind = 1
+	ChangeKindRemoved ChangeKind = 2
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v ChangeKind) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v ChangeKind) WireName() (string, bool) {
+	switch v {
+	case ChangeKindAdded:
+		return "added", true
+	case ChangeKindRemoved:
+		return "removed", true
+	}
+	return "", false
+}
+
+// ParseChangeKind returns the member named by an exact wire word.
+func ParseChangeKind(word string) (ChangeKind, bool) {
+	switch word {
+	case "added":
+		return ChangeKindAdded, true
+	case "removed":
+		return ChangeKindRemoved, true
+	}
+	return ChangeKind(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v ChangeKind) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *ChangeKind) UnmarshalText(text []byte) error {
+	word, ok := ParseChangeKind(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v ChangeKind) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *ChangeKind) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseChangeKind(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// ChangeKindValues returns every member of ChangeKind in declaration order, in a new slice.
+func ChangeKindValues() []ChangeKind {
+	return []ChangeKind{ChangeKindAdded, ChangeKindRemoved}
+}
+
+// Known reports whether v is a member of ChangeKind.
+func (v ChangeKind) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// ChangePageOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseChangePageOutcome preserve the exact wire words.
+type ChangePageOutcome uint32
+
+const (
+	ChangePageOutcomePage        ChangePageOutcome = 1
+	ChangePageOutcomeGap         ChangePageOutcome = 2
+	ChangePageOutcomeForbidden   ChangePageOutcome = 3
+	ChangePageOutcomeInvalid     ChangePageOutcome = 4
+	ChangePageOutcomeUnavailable ChangePageOutcome = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v ChangePageOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v ChangePageOutcome) WireName() (string, bool) {
+	switch v {
+	case ChangePageOutcomePage:
+		return "page", true
+	case ChangePageOutcomeGap:
+		return "gap", true
+	case ChangePageOutcomeForbidden:
+		return "forbidden", true
+	case ChangePageOutcomeInvalid:
+		return "invalid", true
+	case ChangePageOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseChangePageOutcome returns the member named by an exact wire word.
+func ParseChangePageOutcome(word string) (ChangePageOutcome, bool) {
+	switch word {
+	case "page":
+		return ChangePageOutcomePage, true
+	case "gap":
+		return ChangePageOutcomeGap, true
+	case "forbidden":
+		return ChangePageOutcomeForbidden, true
+	case "invalid":
+		return ChangePageOutcomeInvalid, true
+	case "unavailable":
+		return ChangePageOutcomeUnavailable, true
+	}
+	return ChangePageOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v ChangePageOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *ChangePageOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseChangePageOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v ChangePageOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *ChangePageOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseChangePageOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// ChangePageOutcomeValues returns every member of ChangePageOutcome in declaration order, in a new slice.
+func ChangePageOutcomeValues() []ChangePageOutcome {
+	return []ChangePageOutcome{ChangePageOutcomePage, ChangePageOutcomeGap, ChangePageOutcomeForbidden, ChangePageOutcomeInvalid, ChangePageOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of ChangePageOutcome.
+func (v ChangePageOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// ListingOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseListingOutcome preserve the exact wire words.
+type ListingOutcome uint32
+
+const (
+	ListingOutcomePage        ListingOutcome = 1
+	ListingOutcomeGap         ListingOutcome = 2
+	ListingOutcomeForbidden   ListingOutcome = 3
+	ListingOutcomeInvalid     ListingOutcome = 4
+	ListingOutcomeUnavailable ListingOutcome = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v ListingOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v ListingOutcome) WireName() (string, bool) {
+	switch v {
+	case ListingOutcomePage:
+		return "page", true
+	case ListingOutcomeGap:
+		return "gap", true
+	case ListingOutcomeForbidden:
+		return "forbidden", true
+	case ListingOutcomeInvalid:
+		return "invalid", true
+	case ListingOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseListingOutcome returns the member named by an exact wire word.
+func ParseListingOutcome(word string) (ListingOutcome, bool) {
+	switch word {
+	case "page":
+		return ListingOutcomePage, true
+	case "gap":
+		return ListingOutcomeGap, true
+	case "forbidden":
+		return ListingOutcomeForbidden, true
+	case "invalid":
+		return ListingOutcomeInvalid, true
+	case "unavailable":
+		return ListingOutcomeUnavailable, true
+	}
+	return ListingOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v ListingOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *ListingOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseListingOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v ListingOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *ListingOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseListingOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// ListingOutcomeValues returns every member of ListingOutcome in declaration order, in a new slice.
+func ListingOutcomeValues() []ListingOutcome {
+	return []ListingOutcome{ListingOutcomePage, ListingOutcomeGap, ListingOutcomeForbidden, ListingOutcomeInvalid, ListingOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of ListingOutcome.
+func (v ListingOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// Addressing is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseAddressing preserve the exact wire words.
+type Addressing uint32
+
+const (
+	AddressingContent Addressing = 1
+	AddressingName    Addressing = 2
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v Addressing) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v Addressing) WireName() (string, bool) {
+	switch v {
+	case AddressingContent:
+		return "content", true
+	case AddressingName:
+		return "name", true
+	}
+	return "", false
+}
+
+// ParseAddressing returns the member named by an exact wire word.
+func ParseAddressing(word string) (Addressing, bool) {
+	switch word {
+	case "content":
+		return AddressingContent, true
+	case "name":
+		return AddressingName, true
+	}
+	return Addressing(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v Addressing) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *Addressing) UnmarshalText(text []byte) error {
+	word, ok := ParseAddressing(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v Addressing) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *Addressing) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseAddressing(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// AddressingValues returns every member of Addressing in declaration order, in a new slice.
+func AddressingValues() []Addressing {
+	return []Addressing{AddressingContent, AddressingName}
+}
+
+// Known reports whether v is a member of Addressing.
+func (v Addressing) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// Placement is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParsePlacement preserve the exact wire words.
+type Placement uint32
+
+const (
+	PlacementLocal  Placement = 1
+	PlacementRemote Placement = 2
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v Placement) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v Placement) WireName() (string, bool) {
+	switch v {
+	case PlacementLocal:
+		return "local", true
+	case PlacementRemote:
+		return "remote", true
+	}
+	return "", false
+}
+
+// ParsePlacement returns the member named by an exact wire word.
+func ParsePlacement(word string) (Placement, bool) {
+	switch word {
+	case "local":
+		return PlacementLocal, true
+	case "remote":
+		return PlacementRemote, true
+	}
+	return Placement(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v Placement) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *Placement) UnmarshalText(text []byte) error {
+	word, ok := ParsePlacement(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v Placement) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *Placement) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParsePlacement(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// PlacementValues returns every member of Placement in declaration order, in a new slice.
+func PlacementValues() []Placement {
+	return []Placement{PlacementLocal, PlacementRemote}
+}
+
+// Known reports whether v is a member of Placement.
+func (v Placement) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// Lifetime is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseLifetime preserve the exact wire words.
+type Lifetime uint32
+
+const (
+	LifetimeUntilReleased Lifetime = 1
+	LifetimeLease         Lifetime = 2
+	LifetimeWhilePresent  Lifetime = 3
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v Lifetime) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v Lifetime) WireName() (string, bool) {
+	switch v {
+	case LifetimeUntilReleased:
+		return "until_released", true
+	case LifetimeLease:
+		return "lease", true
+	case LifetimeWhilePresent:
+		return "while_present", true
+	}
+	return "", false
+}
+
+// ParseLifetime returns the member named by an exact wire word.
+func ParseLifetime(word string) (Lifetime, bool) {
+	switch word {
+	case "until_released":
+		return LifetimeUntilReleased, true
+	case "lease":
+		return LifetimeLease, true
+	case "while_present":
+		return LifetimeWhilePresent, true
+	}
+	return Lifetime(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v Lifetime) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *Lifetime) UnmarshalText(text []byte) error {
+	word, ok := ParseLifetime(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v Lifetime) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *Lifetime) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseLifetime(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// LifetimeValues returns every member of Lifetime in declaration order, in a new slice.
+func LifetimeValues() []Lifetime {
+	return []Lifetime{LifetimeUntilReleased, LifetimeLease, LifetimeWhilePresent}
+}
+
+// Known reports whether v is a member of Lifetime.
+func (v Lifetime) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// Attestation is an open vocabulary: a reader keeps a word it has never heard, so
+// a value may be none of the constants below. Attestation(word) and string(v)
+// convert between the raw word and the vocabulary.
+type Attestation string
+
+const (
+	AttestationDeclared Attestation = "declared"
+	AttestationObserved Attestation = "observed"
+	AttestationVerified Attestation = "verified"
+)
+
+// AttestationValues returns every member of Attestation in declaration order, in a new slice.
+func AttestationValues() []Attestation {
+	return []Attestation{AttestationDeclared, AttestationObserved, AttestationVerified}
+}
+
+// Known reports whether v is a member of Attestation.
+func (v Attestation) Known() bool {
+	switch v {
+	case AttestationDeclared, AttestationObserved, AttestationVerified:
+		return true
+	}
+	return false
+}
+
+// StoreErrorKind is an open vocabulary: a reader keeps a word it has never heard, so
+// a value may be none of the constants below. StoreErrorKind(word) and string(v)
+// convert between the raw word and the vocabulary.
+type StoreErrorKind string
+
+const (
+	StoreErrorKindOther                   StoreErrorKind = "other"
+	StoreErrorKindMalformedIndex          StoreErrorKind = "malformed_index"
+	StoreErrorKindUnreadableIndex         StoreErrorKind = "unreadable_index"
+	StoreErrorKindUnreadableTree          StoreErrorKind = "unreadable_tree"
+	StoreErrorKindUnreadableConfiguration StoreErrorKind = "unreadable_configuration"
+)
+
+// StoreErrorKindValues returns every member of StoreErrorKind in declaration order, in a new slice.
+func StoreErrorKindValues() []StoreErrorKind {
+	return []StoreErrorKind{StoreErrorKindOther, StoreErrorKindMalformedIndex, StoreErrorKindUnreadableIndex, StoreErrorKindUnreadableTree, StoreErrorKindUnreadableConfiguration}
+}
+
+// Known reports whether v is a member of StoreErrorKind.
+func (v StoreErrorKind) Known() bool {
+	switch v {
+	case StoreErrorKindOther, StoreErrorKindMalformedIndex, StoreErrorKindUnreadableIndex, StoreErrorKindUnreadableTree, StoreErrorKindUnreadableConfiguration:
+		return true
+	}
+	return false
+}
+
+// HoldOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseHoldOutcome preserve the exact wire words.
+type HoldOutcome uint32
+
+const (
+	HoldOutcomeHeld          HoldOutcome = 1
+	HoldOutcomeUnknownTarget HoldOutcome = 2
+	HoldOutcomeConflict      HoldOutcome = 3
+	HoldOutcomeForbidden     HoldOutcome = 4
+	HoldOutcomeInvalid       HoldOutcome = 5
+	HoldOutcomeExhausted     HoldOutcome = 6
+	HoldOutcomeUnavailable   HoldOutcome = 7
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v HoldOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v HoldOutcome) WireName() (string, bool) {
+	switch v {
+	case HoldOutcomeHeld:
+		return "held", true
+	case HoldOutcomeUnknownTarget:
+		return "unknown_target", true
+	case HoldOutcomeConflict:
+		return "conflict", true
+	case HoldOutcomeForbidden:
+		return "forbidden", true
+	case HoldOutcomeInvalid:
+		return "invalid", true
+	case HoldOutcomeExhausted:
+		return "exhausted", true
+	case HoldOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseHoldOutcome returns the member named by an exact wire word.
+func ParseHoldOutcome(word string) (HoldOutcome, bool) {
+	switch word {
+	case "held":
+		return HoldOutcomeHeld, true
+	case "unknown_target":
+		return HoldOutcomeUnknownTarget, true
+	case "conflict":
+		return HoldOutcomeConflict, true
+	case "forbidden":
+		return HoldOutcomeForbidden, true
+	case "invalid":
+		return HoldOutcomeInvalid, true
+	case "exhausted":
+		return HoldOutcomeExhausted, true
+	case "unavailable":
+		return HoldOutcomeUnavailable, true
+	}
+	return HoldOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v HoldOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *HoldOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseHoldOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v HoldOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *HoldOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseHoldOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// HoldOutcomeValues returns every member of HoldOutcome in declaration order, in a new slice.
+func HoldOutcomeValues() []HoldOutcome {
+	return []HoldOutcome{HoldOutcomeHeld, HoldOutcomeUnknownTarget, HoldOutcomeConflict, HoldOutcomeForbidden, HoldOutcomeInvalid, HoldOutcomeExhausted, HoldOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of HoldOutcome.
+func (v HoldOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// ReleaseOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseReleaseOutcome preserve the exact wire words.
+type ReleaseOutcome uint32
+
+const (
+	ReleaseOutcomeReleased    ReleaseOutcome = 1
+	ReleaseOutcomeUnknown     ReleaseOutcome = 2
+	ReleaseOutcomeForbidden   ReleaseOutcome = 3
+	ReleaseOutcomeInvalid     ReleaseOutcome = 4
+	ReleaseOutcomeUnavailable ReleaseOutcome = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v ReleaseOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v ReleaseOutcome) WireName() (string, bool) {
+	switch v {
+	case ReleaseOutcomeReleased:
+		return "released", true
+	case ReleaseOutcomeUnknown:
+		return "unknown", true
+	case ReleaseOutcomeForbidden:
+		return "forbidden", true
+	case ReleaseOutcomeInvalid:
+		return "invalid", true
+	case ReleaseOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseReleaseOutcome returns the member named by an exact wire word.
+func ParseReleaseOutcome(word string) (ReleaseOutcome, bool) {
+	switch word {
+	case "released":
+		return ReleaseOutcomeReleased, true
+	case "unknown":
+		return ReleaseOutcomeUnknown, true
+	case "forbidden":
+		return ReleaseOutcomeForbidden, true
+	case "invalid":
+		return ReleaseOutcomeInvalid, true
+	case "unavailable":
+		return ReleaseOutcomeUnavailable, true
+	}
+	return ReleaseOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v ReleaseOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *ReleaseOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseReleaseOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v ReleaseOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *ReleaseOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseReleaseOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// ReleaseOutcomeValues returns every member of ReleaseOutcome in declaration order, in a new slice.
+func ReleaseOutcomeValues() []ReleaseOutcome {
+	return []ReleaseOutcome{ReleaseOutcomeReleased, ReleaseOutcomeUnknown, ReleaseOutcomeForbidden, ReleaseOutcomeInvalid, ReleaseOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of ReleaseOutcome.
+func (v ReleaseOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// RenewOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseRenewOutcome preserve the exact wire words.
+type RenewOutcome uint32
+
+const (
+	RenewOutcomeRenewed     RenewOutcome = 1
+	RenewOutcomeUnknown     RenewOutcome = 2
+	RenewOutcomeExpired     RenewOutcome = 3
+	RenewOutcomeForbidden   RenewOutcome = 4
+	RenewOutcomeInvalid     RenewOutcome = 5
+	RenewOutcomeUnavailable RenewOutcome = 6
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v RenewOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v RenewOutcome) WireName() (string, bool) {
+	switch v {
+	case RenewOutcomeRenewed:
+		return "renewed", true
+	case RenewOutcomeUnknown:
+		return "unknown", true
+	case RenewOutcomeExpired:
+		return "expired", true
+	case RenewOutcomeForbidden:
+		return "forbidden", true
+	case RenewOutcomeInvalid:
+		return "invalid", true
+	case RenewOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseRenewOutcome returns the member named by an exact wire word.
+func ParseRenewOutcome(word string) (RenewOutcome, bool) {
+	switch word {
+	case "renewed":
+		return RenewOutcomeRenewed, true
+	case "unknown":
+		return RenewOutcomeUnknown, true
+	case "expired":
+		return RenewOutcomeExpired, true
+	case "forbidden":
+		return RenewOutcomeForbidden, true
+	case "invalid":
+		return RenewOutcomeInvalid, true
+	case "unavailable":
+		return RenewOutcomeUnavailable, true
+	}
+	return RenewOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v RenewOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *RenewOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseRenewOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v RenewOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *RenewOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseRenewOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// RenewOutcomeValues returns every member of RenewOutcome in declaration order, in a new slice.
+func RenewOutcomeValues() []RenewOutcome {
+	return []RenewOutcome{RenewOutcomeRenewed, RenewOutcomeUnknown, RenewOutcomeExpired, RenewOutcomeForbidden, RenewOutcomeInvalid, RenewOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of RenewOutcome.
+func (v RenewOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// DescribeOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseDescribeOutcome preserve the exact wire words.
+type DescribeOutcome uint32
+
+const (
+	DescribeOutcomeDescribed   DescribeOutcome = 1
+	DescribeOutcomeUnknown     DescribeOutcome = 2
+	DescribeOutcomeForbidden   DescribeOutcome = 3
+	DescribeOutcomeInvalid     DescribeOutcome = 4
+	DescribeOutcomeUnavailable DescribeOutcome = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v DescribeOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v DescribeOutcome) WireName() (string, bool) {
+	switch v {
+	case DescribeOutcomeDescribed:
+		return "described", true
+	case DescribeOutcomeUnknown:
+		return "unknown", true
+	case DescribeOutcomeForbidden:
+		return "forbidden", true
+	case DescribeOutcomeInvalid:
+		return "invalid", true
+	case DescribeOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseDescribeOutcome returns the member named by an exact wire word.
+func ParseDescribeOutcome(word string) (DescribeOutcome, bool) {
+	switch word {
+	case "described":
+		return DescribeOutcomeDescribed, true
+	case "unknown":
+		return DescribeOutcomeUnknown, true
+	case "forbidden":
+		return DescribeOutcomeForbidden, true
+	case "invalid":
+		return DescribeOutcomeInvalid, true
+	case "unavailable":
+		return DescribeOutcomeUnavailable, true
+	}
+	return DescribeOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v DescribeOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *DescribeOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseDescribeOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v DescribeOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *DescribeOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseDescribeOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// DescribeOutcomeValues returns every member of DescribeOutcome in declaration order, in a new slice.
+func DescribeOutcomeValues() []DescribeOutcome {
+	return []DescribeOutcome{DescribeOutcomeDescribed, DescribeOutcomeUnknown, DescribeOutcomeForbidden, DescribeOutcomeInvalid, DescribeOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of DescribeOutcome.
+func (v DescribeOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// PublishOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParsePublishOutcome preserve the exact wire words.
+type PublishOutcome uint32
+
+const (
+	PublishOutcomePublished   PublishOutcome = 1
+	PublishOutcomePresent     PublishOutcome = 2
+	PublishOutcomeIncomplete  PublishOutcome = 3
+	PublishOutcomeConflict    PublishOutcome = 4
+	PublishOutcomeForbidden   PublishOutcome = 5
+	PublishOutcomeInvalid     PublishOutcome = 6
+	PublishOutcomeExhausted   PublishOutcome = 7
+	PublishOutcomeUnavailable PublishOutcome = 8
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v PublishOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v PublishOutcome) WireName() (string, bool) {
+	switch v {
+	case PublishOutcomePublished:
+		return "published", true
+	case PublishOutcomePresent:
+		return "present", true
+	case PublishOutcomeIncomplete:
+		return "incomplete", true
+	case PublishOutcomeConflict:
+		return "conflict", true
+	case PublishOutcomeForbidden:
+		return "forbidden", true
+	case PublishOutcomeInvalid:
+		return "invalid", true
+	case PublishOutcomeExhausted:
+		return "exhausted", true
+	case PublishOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParsePublishOutcome returns the member named by an exact wire word.
+func ParsePublishOutcome(word string) (PublishOutcome, bool) {
+	switch word {
+	case "published":
+		return PublishOutcomePublished, true
+	case "present":
+		return PublishOutcomePresent, true
+	case "incomplete":
+		return PublishOutcomeIncomplete, true
+	case "conflict":
+		return PublishOutcomeConflict, true
+	case "forbidden":
+		return PublishOutcomeForbidden, true
+	case "invalid":
+		return PublishOutcomeInvalid, true
+	case "exhausted":
+		return PublishOutcomeExhausted, true
+	case "unavailable":
+		return PublishOutcomeUnavailable, true
+	}
+	return PublishOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v PublishOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *PublishOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParsePublishOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v PublishOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *PublishOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParsePublishOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// PublishOutcomeValues returns every member of PublishOutcome in declaration order, in a new slice.
+func PublishOutcomeValues() []PublishOutcome {
+	return []PublishOutcome{PublishOutcomePublished, PublishOutcomePresent, PublishOutcomeIncomplete, PublishOutcomeConflict, PublishOutcomeForbidden, PublishOutcomeInvalid, PublishOutcomeExhausted, PublishOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of PublishOutcome.
+func (v PublishOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// InventoryOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseInventoryOutcome preserve the exact wire words.
+type InventoryOutcome uint32
+
+const (
+	InventoryOutcomePage        InventoryOutcome = 1
+	InventoryOutcomeGap         InventoryOutcome = 2
+	InventoryOutcomeForbidden   InventoryOutcome = 3
+	InventoryOutcomeInvalid     InventoryOutcome = 4
+	InventoryOutcomeUnavailable InventoryOutcome = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v InventoryOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v InventoryOutcome) WireName() (string, bool) {
+	switch v {
+	case InventoryOutcomePage:
+		return "page", true
+	case InventoryOutcomeGap:
+		return "gap", true
+	case InventoryOutcomeForbidden:
+		return "forbidden", true
+	case InventoryOutcomeInvalid:
+		return "invalid", true
+	case InventoryOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseInventoryOutcome returns the member named by an exact wire word.
+func ParseInventoryOutcome(word string) (InventoryOutcome, bool) {
+	switch word {
+	case "page":
+		return InventoryOutcomePage, true
+	case "gap":
+		return InventoryOutcomeGap, true
+	case "forbidden":
+		return InventoryOutcomeForbidden, true
+	case "invalid":
+		return InventoryOutcomeInvalid, true
+	case "unavailable":
+		return InventoryOutcomeUnavailable, true
+	}
+	return InventoryOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v InventoryOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *InventoryOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseInventoryOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v InventoryOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *InventoryOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseInventoryOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// InventoryOutcomeValues returns every member of InventoryOutcome in declaration order, in a new slice.
+func InventoryOutcomeValues() []InventoryOutcome {
+	return []InventoryOutcome{InventoryOutcomePage, InventoryOutcomeGap, InventoryOutcomeForbidden, InventoryOutcomeInvalid, InventoryOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of InventoryOutcome.
+func (v InventoryOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// RemoveOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseRemoveOutcome preserve the exact wire words.
+type RemoveOutcome uint32
+
+const (
+	RemoveOutcomeRemoved     RemoveOutcome = 1
+	RemoveOutcomeNotFound    RemoveOutcome = 2
+	RemoveOutcomeHeld        RemoveOutcome = 3
+	RemoveOutcomeBusy        RemoveOutcome = 4
+	RemoveOutcomeUnsupported RemoveOutcome = 5
+	RemoveOutcomeForbidden   RemoveOutcome = 6
+	RemoveOutcomeInvalid     RemoveOutcome = 7
+	RemoveOutcomeUnavailable RemoveOutcome = 8
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v RemoveOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v RemoveOutcome) WireName() (string, bool) {
+	switch v {
+	case RemoveOutcomeRemoved:
+		return "removed", true
+	case RemoveOutcomeNotFound:
+		return "not_found", true
+	case RemoveOutcomeHeld:
+		return "held", true
+	case RemoveOutcomeBusy:
+		return "busy", true
+	case RemoveOutcomeUnsupported:
+		return "unsupported", true
+	case RemoveOutcomeForbidden:
+		return "forbidden", true
+	case RemoveOutcomeInvalid:
+		return "invalid", true
+	case RemoveOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseRemoveOutcome returns the member named by an exact wire word.
+func ParseRemoveOutcome(word string) (RemoveOutcome, bool) {
+	switch word {
+	case "removed":
+		return RemoveOutcomeRemoved, true
+	case "not_found":
+		return RemoveOutcomeNotFound, true
+	case "held":
+		return RemoveOutcomeHeld, true
+	case "busy":
+		return RemoveOutcomeBusy, true
+	case "unsupported":
+		return RemoveOutcomeUnsupported, true
+	case "forbidden":
+		return RemoveOutcomeForbidden, true
+	case "invalid":
+		return RemoveOutcomeInvalid, true
+	case "unavailable":
+		return RemoveOutcomeUnavailable, true
+	}
+	return RemoveOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v RemoveOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *RemoveOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseRemoveOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v RemoveOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *RemoveOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseRemoveOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// RemoveOutcomeValues returns every member of RemoveOutcome in declaration order, in a new slice.
+func RemoveOutcomeValues() []RemoveOutcome {
+	return []RemoveOutcome{RemoveOutcomeRemoved, RemoveOutcomeNotFound, RemoveOutcomeHeld, RemoveOutcomeBusy, RemoveOutcomeUnsupported, RemoveOutcomeForbidden, RemoveOutcomeInvalid, RemoveOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of RemoveOutcome.
+func (v RemoveOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// SourceDescriptionOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseSourceDescriptionOutcome preserve the exact wire words.
+type SourceDescriptionOutcome uint32
+
+const (
+	SourceDescriptionOutcomeDescribed   SourceDescriptionOutcome = 1
+	SourceDescriptionOutcomeForbidden   SourceDescriptionOutcome = 2
+	SourceDescriptionOutcomeInvalid     SourceDescriptionOutcome = 3
+	SourceDescriptionOutcomeUnavailable SourceDescriptionOutcome = 4
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v SourceDescriptionOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v SourceDescriptionOutcome) WireName() (string, bool) {
+	switch v {
+	case SourceDescriptionOutcomeDescribed:
+		return "described", true
+	case SourceDescriptionOutcomeForbidden:
+		return "forbidden", true
+	case SourceDescriptionOutcomeInvalid:
+		return "invalid", true
+	case SourceDescriptionOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseSourceDescriptionOutcome returns the member named by an exact wire word.
+func ParseSourceDescriptionOutcome(word string) (SourceDescriptionOutcome, bool) {
+	switch word {
+	case "described":
+		return SourceDescriptionOutcomeDescribed, true
+	case "forbidden":
+		return SourceDescriptionOutcomeForbidden, true
+	case "invalid":
+		return SourceDescriptionOutcomeInvalid, true
+	case "unavailable":
+		return SourceDescriptionOutcomeUnavailable, true
+	}
+	return SourceDescriptionOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v SourceDescriptionOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *SourceDescriptionOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseSourceDescriptionOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v SourceDescriptionOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *SourceDescriptionOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseSourceDescriptionOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// SourceDescriptionOutcomeValues returns every member of SourceDescriptionOutcome in declaration order, in a new slice.
+func SourceDescriptionOutcomeValues() []SourceDescriptionOutcome {
+	return []SourceDescriptionOutcome{SourceDescriptionOutcomeDescribed, SourceDescriptionOutcomeForbidden, SourceDescriptionOutcomeInvalid, SourceDescriptionOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of SourceDescriptionOutcome.
+func (v SourceDescriptionOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// SourceChangeKind is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseSourceChangeKind preserve the exact wire words.
+type SourceChangeKind uint32
+
+const (
+	SourceChangeKindAdded        SourceChangeKind = 1
+	SourceChangeKindRemoved      SourceChangeKind = 2
+	SourceChangeKindHeld         SourceChangeKind = 3
+	SourceChangeKindReleased     SourceChangeKind = 4
+	SourceChangeKindStoreChanged SourceChangeKind = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v SourceChangeKind) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v SourceChangeKind) WireName() (string, bool) {
+	switch v {
+	case SourceChangeKindAdded:
+		return "added", true
+	case SourceChangeKindRemoved:
+		return "removed", true
+	case SourceChangeKindHeld:
+		return "held", true
+	case SourceChangeKindReleased:
+		return "released", true
+	case SourceChangeKindStoreChanged:
+		return "store_changed", true
+	}
+	return "", false
+}
+
+// ParseSourceChangeKind returns the member named by an exact wire word.
+func ParseSourceChangeKind(word string) (SourceChangeKind, bool) {
+	switch word {
+	case "added":
+		return SourceChangeKindAdded, true
+	case "removed":
+		return SourceChangeKindRemoved, true
+	case "held":
+		return SourceChangeKindHeld, true
+	case "released":
+		return SourceChangeKindReleased, true
+	case "store_changed":
+		return SourceChangeKindStoreChanged, true
+	}
+	return SourceChangeKind(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v SourceChangeKind) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *SourceChangeKind) UnmarshalText(text []byte) error {
+	word, ok := ParseSourceChangeKind(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v SourceChangeKind) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *SourceChangeKind) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseSourceChangeKind(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// SourceChangeKindValues returns every member of SourceChangeKind in declaration order, in a new slice.
+func SourceChangeKindValues() []SourceChangeKind {
+	return []SourceChangeKind{SourceChangeKindAdded, SourceChangeKindRemoved, SourceChangeKindHeld, SourceChangeKindReleased, SourceChangeKindStoreChanged}
+}
+
+// Known reports whether v is a member of SourceChangeKind.
+func (v SourceChangeKind) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// SourcePageOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseSourcePageOutcome preserve the exact wire words.
+type SourcePageOutcome uint32
+
+const (
+	SourcePageOutcomePage        SourcePageOutcome = 1
+	SourcePageOutcomeGap         SourcePageOutcome = 2
+	SourcePageOutcomeForbidden   SourcePageOutcome = 3
+	SourcePageOutcomeInvalid     SourcePageOutcome = 4
+	SourcePageOutcomeUnavailable SourcePageOutcome = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v SourcePageOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v SourcePageOutcome) WireName() (string, bool) {
+	switch v {
+	case SourcePageOutcomePage:
+		return "page", true
+	case SourcePageOutcomeGap:
+		return "gap", true
+	case SourcePageOutcomeForbidden:
+		return "forbidden", true
+	case SourcePageOutcomeInvalid:
+		return "invalid", true
+	case SourcePageOutcomeUnavailable:
+		return "unavailable", true
+	}
+	return "", false
+}
+
+// ParseSourcePageOutcome returns the member named by an exact wire word.
+func ParseSourcePageOutcome(word string) (SourcePageOutcome, bool) {
+	switch word {
+	case "page":
+		return SourcePageOutcomePage, true
+	case "gap":
+		return SourcePageOutcomeGap, true
+	case "forbidden":
+		return SourcePageOutcomeForbidden, true
+	case "invalid":
+		return SourcePageOutcomeInvalid, true
+	case "unavailable":
+		return SourcePageOutcomeUnavailable, true
+	}
+	return SourcePageOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v SourcePageOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *SourcePageOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseSourcePageOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v SourcePageOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *SourcePageOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseSourcePageOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// SourcePageOutcomeValues returns every member of SourcePageOutcome in declaration order, in a new slice.
+func SourcePageOutcomeValues() []SourcePageOutcome {
+	return []SourcePageOutcome{SourcePageOutcomePage, SourcePageOutcomeGap, SourcePageOutcomeForbidden, SourcePageOutcomeInvalid, SourcePageOutcomeUnavailable}
+}
+
+// Known reports whether v is a member of SourcePageOutcome.
+func (v SourcePageOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// ServiceErrorCode is an open vocabulary: a reader keeps a word it has never heard, so
+// a value may be none of the constants below. ServiceErrorCode(word) and string(v)
+// convert between the raw word and the vocabulary.
+type ServiceErrorCode string
+
+const (
+	ServiceErrorCodeHandlerError      ServiceErrorCode = "handler_error"
+	ServiceErrorCodeInvalidResult     ServiceErrorCode = "invalid_result"
+	ServiceErrorCodeUnknownVersion    ServiceErrorCode = "unknown_version"
+	ServiceErrorCodeUnknownService    ServiceErrorCode = "unknown_service"
+	ServiceErrorCodeUnknownMethod     ServiceErrorCode = "unknown_method"
+	ServiceErrorCodeWrongMode         ServiceErrorCode = "wrong_mode"
+	ServiceErrorCodeCallerUnavailable ServiceErrorCode = "caller_unavailable"
+	ServiceErrorCodeIdentityRequired  ServiceErrorCode = "identity_required"
+)
+
+// ServiceErrorCodeValues returns every member of ServiceErrorCode in declaration order, in a new slice.
+func ServiceErrorCodeValues() []ServiceErrorCode {
+	return []ServiceErrorCode{ServiceErrorCodeHandlerError, ServiceErrorCodeInvalidResult, ServiceErrorCodeUnknownVersion, ServiceErrorCodeUnknownService, ServiceErrorCodeUnknownMethod, ServiceErrorCodeWrongMode, ServiceErrorCodeCallerUnavailable, ServiceErrorCodeIdentityRequired}
+}
+
+// Known reports whether v is a member of ServiceErrorCode.
+func (v ServiceErrorCode) Known() bool {
+	switch v {
+	case ServiceErrorCodeHandlerError, ServiceErrorCodeInvalidResult, ServiceErrorCodeUnknownVersion, ServiceErrorCodeUnknownService, ServiceErrorCodeUnknownMethod, ServiceErrorCodeWrongMode, ServiceErrorCodeCallerUnavailable, ServiceErrorCodeIdentityRequired:
+		return true
+	}
+	return false
+}
+
+var InventorySourceErrorCodes = []string{"caller_unavailable", "identity_required"}
 
 // Opaque resource bound to receiving account and observed program and provider
 // lifetime. Digest is the requested canonical sha256 naming key, not a verified
@@ -377,13 +3167,13 @@ type Resource struct {
 	Handle       string
 	Digest       string
 	Size         int64
-	Verification string
+	Verification Verification
 }
 
 // Resource present exactly for opened. Authorization precedes lookup. not_found
 // means no known match, not global absence.
 type OpenResult struct {
-	Outcome  string
+	Outcome  OpenOutcome
 	Resource *Resource
 }
 
@@ -394,19 +3184,19 @@ type Chunk struct {
 	Offset int64
 	Total  int64
 	Data   []byte
-	Eof    bool
+	EOF    bool
 }
 
 // Chunk present exactly for data. changed reports observed mutation and
 // invalidates resource; discard assembly and explicitly reopen. Mutation
 // detection is advisory; verify completed bytes.
 type ReadResult struct {
-	Outcome string
+	Outcome ReadOutcome
 	Chunk   *Chunk
 }
 
 type CloseResult struct {
-	Outcome string
+	Outcome CloseOutcome
 }
 
 // Opaque staged upload bound to the receiving account/program scope and
@@ -426,14 +3216,14 @@ type Upload struct {
 type Stored struct {
 	Digest   string
 	Size     int64
-	Evidence string
+	Evidence Evidence
 }
 
 // upload present exactly for started. stored present exactly for committed and
 // present. limit is the provider's maximum declared size for evaluated
 // outcomes, and zero for forbidden, invalid and unavailable.
 type BeginResult struct {
-	Outcome string
+	Outcome BeginOutcome
 	Upload  *Upload
 	Stored  *Stored
 	Limit   int64
@@ -442,20 +3232,20 @@ type BeginResult struct {
 // For accepted, out_of_order and too_large, received is the next offset the
 // service accepts. Other outcomes carry zero.
 type AppendResult struct {
-	Outcome  string
+	Outcome  AppendOutcome
 	Received int64
 }
 
 // stored present exactly for committed with hashed evidence. For incomplete,
 // received is the next accepted offset. Other outcomes carry zero.
 type CommitResult struct {
-	Outcome  string
+	Outcome  CommitOutcome
 	Stored   *Stored
 	Received int64
 }
 
 type AbortResult struct {
-	Outcome string
+	Outcome AbortOutcome
 }
 
 // One observed change in provider journal order. Sequence increases within one
@@ -463,7 +3253,7 @@ type AbortResult struct {
 // content. Size is observed; zero means unknown. A notice grants no access.
 type Change struct {
 	Sequence int64
-	Kind     string
+	Kind     ChangeKind
 	Digest   string
 	Size     int64
 }
@@ -474,7 +3264,7 @@ type Change struct {
 // was reached during this call. Refusals carry no changes, an unchanged cursor
 // and at_end false. gap requires restarting from List.
 type ChangePage struct {
-	Outcome string
+	Outcome ChangePageOutcome
 	Changes []Change
 	Next    string
 	AtEnd   bool
@@ -493,66 +3283,404 @@ type ListedObject struct {
 // a count. Refusals carry no objects, empty continuation and cursor, and
 // complete false.
 type ListingPage struct {
-	Outcome      string
+	Outcome      ListingOutcome
 	Objects      []ListedObject
 	Continuation string
 	Complete     bool
 	Cursor       string
 }
 
-type OAContentReaderOpenArguments struct {
+// One stored object, by stat only. locator is opaque provider binding data, as
+// storage Ref.locator; applications never treat it as a path or as authority.
+// partial marks an interrupted transfer the store spells as such. digest is
+// empty exactly when evidence is none.
+type Object struct {
+	Locator  string
+	Size     int64
+	Modified string
+	Partial  bool
+	Digest   string
+	Evidence Evidence
+}
+
+// One object of a manifest. role is an open catalogue <owner>/<name>; seeds
+// weights, weights.config, template, params, license, projector, doc, code,
+// dataset. locator names the object in its store and is excluded from the
+// manifest id. manifest, present only in a manifest of kind
+// abstraction.storage/index@1, references another manifest by id in place of an
+// object. digest is empty exactly when evidence is none.
+type Entry struct {
+	Role        string
+	Digest      string
+	Size        int64
+	MediaType   string
+	Evidence    Evidence
+	Locator     string
+	Manifest    string
+	Annotations map[string]string
+}
+
+// A name a program uses for this manifest, in that program's own vocabulary.
+// scheme is an open catalogue; seeds ollama, hf, lmstudio, comfyui, flm, jan,
+// oci, stabilitymatrix, pinokio, swarmui.
+type Name struct {
+	Scheme string
+	Name   string
+}
+
+// addressing is content when every entry carries a hashed or named digest: id
+// is the sha256 of the canonical encoding of kind, the entries' role, digest,
+// size and media_type in declaration order, and descriptor; names, locators,
+// annotations and store are excluded, so one manifest is known under several
+// names in several stores. addressing is name otherwise: id is the sha256 of
+// the canonical encoding of kind, the entries' role, size and media_type,
+// descriptor, and names[0], which is the store's own name for it; two
+// digest-less manifests differ by what their programs call them. When digests
+// later arrive, a content-addressed manifest supersedes the name-addressed one
+// and superseded_by records the new id on the old record. Canonical encoding is
+// this definition's own encoding with indent 0. kind is an open catalogue;
+// seeds abstraction.model/descriptor@1, abstraction.storage/snapshot@1,
+// abstraction.storage/object@1, abstraction.storage/index@1. descriptor is a
+// string map whose keys the kind defines.
+type Manifest struct {
+	ID           string
+	Addressing   Addressing
+	Kind         string
+	Entries      []Entry
+	Names        []Name
+	Descriptor   map[string]string
+	Store        string
+	SupersededBy string
+}
+
+// domain is the trust domain in which the holder was bound: empty for this
+// service's own local boundary, otherwise the scope this service mapped a
+// remote peer's certificate identity to, as the remote job provider maps keys
+// to namespaces. A relayed hold keeps the domain of the boundary that
+// established it; no domain inherits another's proofs. program is the holder's
+// name in the holder vocabulary (ollama, lemonade, comfyui). instance
+// distinguishes installations of one program: for declared holds the bound
+// peer's normalized executable identity as rights Subject.program spells it;
+// for observed holds the source's opaque identity for that installation (a
+// Stability Matrix package name, a Pinokio app, an install locator). For
+// declared holds account and instance are the receiving boundary's bound peer,
+// asserted by the service; for observed holds they are the source's words and
+// established_by is the source program the service bound. Never a
+// caller-supplied claim.
+type Holder struct {
+	Account       string
+	Program       string
+	Instance      string
+	EstablishedBy string
+	Domain        string
+}
+
+// The index entry that proves an observed hold: index is the opaque locator of
+// the program's own index (a manifest file, a registry, a configuration), key
+// is the entry inside it in the program's own words, role is the program's role
+// word for the target inside that entry (Lemonade main, mmproj, draft,
+// npu_cache). Verify re-reads this. Holds sharing holder, index and key are one
+// grouping in the holder's terms. Absent on declared holds, whose basis is the
+// retained request identity.
+type Basis struct {
+	Index string
+	Key   string
+	Role  string
+}
+
+// target is a manifest id or a canonical digest. purpose is an open catalogue;
+// seeds fetched, installed, pinned, cache. expires is present exactly for
+// lease. basis is present exactly for observed and verified holds. A hold
+// designates dependence; it grants no access to bytes.
+type Hold struct {
+	ID          string
+	Holder      Holder
+	Target      string
+	Purpose     string
+	Lifetime    Lifetime
+	Expires     string
+	Attestation Attestation
+	ObservedAt  string
+	Basis       *Basis
+}
+
+// An index entry naming content the store does not hold, in the program's own
+// reference spelling. expected_digest and expected_size are what the index
+// itself spells for the absent content (a download manifest's sha256), a claim
+// by the holder and never evidence about any present object. A dangling
+// reference is a want: the download request that would satisfy it has this
+// digest and size.
+type Dangling struct {
+	Holder         Holder
+	Basis          Basis
+	Reference      string
+	ExpectedDigest string
+	ExpectedSize   int64
+	ObservedAt     string
+}
+
+// One failure inside one store. A store with errors still reports everything
+// else it read. kind is display-grade; other carries an unlisted cause.
+type StoreError struct {
+	Kind    StoreErrorKind
+	Locator string
+	Detail  string
+}
+
+// placement is local when the store is read by a source bound on this service's
+// own boundary, and remote when its records arrive from a remote service over
+// the service-owned authenticated transport; domain is that remote service's
+// mapped scope, empty for local. A remote store's locators are opaque here, and
+// a shared-filesystem view of another machine's store is never a store. One
+// store a source reads. locator is the store's opaque provider binding. rule
+// says how the store was found, in the source's own words (a default location,
+// an environment variable, a program's configuration, the operator). present
+// false means the discovery rule named a store that does not exist; present
+// true with no objects is an empty store. A source with no store for a program
+// reports nothing for it.
+type Store struct {
+	Name      string
+	Program   string
+	Locator   string
+	Rule      string
+	Present   bool
+	Errors    []StoreError
+	Placement Placement
+	Domain    string
+}
+
+// hold present exactly for held.
+type HoldResult struct {
+	Outcome HoldOutcome
+	Hold    *Hold
+}
+
+type ReleaseResult struct {
+	Outcome ReleaseOutcome
+}
+
+// hold present exactly for renewed.
+type RenewResult struct {
+	Outcome RenewOutcome
+	Hold    *Hold
+}
+
+// manifest present exactly for described.
+type DescribeResult struct {
+	Outcome  DescribeOutcome
+	Manifest *Manifest
+}
+
+// manifest present exactly for published and present. missing lists the digests
+// of entries the service cannot find; it is empty for every outcome except
+// incomplete.
+type PublishResult struct {
+	Outcome  PublishOutcome
+	Manifest *Manifest
+	Missing  []string
+}
+
+type ManifestHolders struct {
+	Manifest Manifest
+	Holds    []Hold
+}
+
+// An object no manifest entry names, with any holds on its digest.
+type ObjectHolders struct {
+	Object Object
+	Store  string
+	Holds  []Hold
+}
+
+// One frozen snapshot across every configured store and designated source;
+// cursor is the content-changes cursor at which it was taken. stores is
+// complete on the first page and empty afterwards. objects carries only objects
+// no manifest entry names. Manifests and objects the caller may not read are
+// omitted without a count. Observed holds carry their observation time and
+// basis, never a promise of current truth. Refusals carry empty lists, empty
+// continuation and cursor, and complete false.
+type InventoryPage struct {
+	Outcome          InventoryOutcome
+	Stores           []Store
+	Manifests        []ManifestHolders
+	Objects          []ObjectHolders
+	Dangling         []Dangling
+	Continuation     string
+	Complete         bool
+	Cursor           string
+	GraceMs          int64
+	AuditRetentionMs int64
+}
+
+// held carries the holders whose declared or verified holds prevented removal;
+// other outcomes carry none.
+type RemoveResult struct {
+	Outcome RemoveOutcome
+	Holders []Holder
+}
+
+// Refusals carry an empty name and empty lists. capabilities is an open list;
+// seeds snapshot, observe, verify, remove. stores carries every store the
+// source's discovery rules produced, present or not, with discovery errors.
+type SourceDescription struct {
+	Outcome      SourceDescriptionOutcome
+	Name         string
+	Stores       []Store
+	Schemes      []string
+	Capabilities []string
+}
+
+// target is a manifest id, an object locator or a store name. hold present
+// exactly for held and released; store present exactly for store_changed.
+type SourceChange struct {
+	Sequence int64
+	Kind     SourceChangeKind
+	Target   string
+	Hold     *Hold
+	Store    *Store
+}
+
+// Snapshot pages carry stores on the first page, then manifests, stray objects
+// and dangling references, and an empty changes list; Observe pages carry
+// changes only. Every hold a source reports has attestation observed and a
+// basis; the runtime rewrites established_by from the bound source program and
+// refuses any other value. A store's errors travel on its Store record; a page
+// never fails for one store's error.
+type SourcePage struct {
+	Outcome      SourcePageOutcome
+	Stores       []Store
+	Manifests    []ManifestHolders
+	Objects      []ObjectHolders
+	Dangling     []Dangling
+	Changes      []SourceChange
+	Continuation string
+	Complete     bool
+	Cursor       string
+}
+
+type oaContentReaderOpenArguments struct {
 	Digest string
 }
 
-type OAContentReaderReadArguments struct {
+type oaContentReaderReadArguments struct {
 	Handle   string
 	Offset   int64
 	MaxBytes int64
 }
 
-type OAContentReaderCloseArguments struct {
+type oaContentReaderCloseArguments struct {
 	Handle string
 }
 
-type OAContentWriterBeginArguments struct {
+type oaContentWriterBeginArguments struct {
 	Request string
 	Digest  string
 	Size    int64
 }
 
-type OAContentWriterAppendArguments struct {
+type oaContentWriterAppendArguments struct {
 	Handle string
 	Offset int64
 	Data   []byte
 }
 
-type OAContentWriterCommitArguments struct {
+type oaContentWriterCommitArguments struct {
 	Handle string
 }
 
-type OAContentWriterAbortArguments struct {
+type oaContentWriterAbortArguments struct {
 	Handle string
 }
 
-type OAContentChangesObserveArguments struct {
+type oaContentChangesObserveArguments struct {
 	Cursor     string
 	MaxChanges int64
 	WaitMs     int64
 }
 
-type OAContentChangesListArguments struct {
+type oaContentChangesListArguments struct {
 	Continuation string
 	Limit        int64
 }
 
-type OAServiceFrame struct {
+type oaHoldsHoldArguments struct {
+	Request  string
+	Target   string
+	Purpose  string
+	Lifetime Lifetime
+	LeaseMs  int64
+}
+
+type oaHoldsReleaseArguments struct {
+	Hold string
+}
+
+type oaHoldsRenewArguments struct {
+	Hold    string
+	LeaseMs int64
+}
+
+type oaManifestsDescribeArguments struct {
+	ID string
+}
+
+type oaManifestsPublishArguments struct {
+	Request  string
+	Manifest Manifest
+}
+
+type oaInventoryListArguments struct {
+	Continuation string
+	Limit        int64
+}
+
+type oaInventoryHoldersArguments struct {
+	Target string
+}
+
+type oaInventoryUnheldArguments struct {
+	Continuation string
+	Limit        int64
+}
+
+type oaInventoryFindArguments struct {
+	Digest string
+}
+
+type oaContentRemoverRemoveArguments struct {
+	Target string
+}
+
+type oaInventorySourceDescribeArguments struct {
+}
+
+type oaInventorySourceSnapshotArguments struct {
+	Continuation string
+	Limit        int64
+}
+
+type oaInventorySourceObserveArguments struct {
+	Cursor     string
+	MaxChanges int64
+	WaitMs     int64
+}
+
+type oaInventorySourceVerifyArguments struct {
+	Target string
+}
+
+type oaInventorySourceRemoveArguments struct {
+	Target string
+}
+
+type oaServiceFrame struct {
 	Version   int32
 	Service   string
 	Method    string
 	Arguments Raw
 }
 
-type OAServiceReply struct {
+type oaServiceReply struct {
 	Version int32
 	Service string
 	Method  string
@@ -560,49 +3688,109 @@ type OAServiceReply struct {
 	Payload Raw
 }
 
-type OAServiceError struct {
+type oaServiceError struct {
 	Code    string
 	Message string
 }
 
-type OAContentReaderOpenResult struct {
+type oaContentReaderOpenResult struct {
 	Value OpenResult
 }
 
-type OAContentReaderReadResult struct {
+type oaContentReaderReadResult struct {
 	Value ReadResult
 }
 
-type OAContentReaderCloseResult struct {
+type oaContentReaderCloseResult struct {
 	Value CloseResult
 }
 
-type OAContentWriterBeginResult struct {
+type oaContentWriterBeginResult struct {
 	Value BeginResult
 }
 
-type OAContentWriterAppendResult struct {
+type oaContentWriterAppendResult struct {
 	Value AppendResult
 }
 
-type OAContentWriterCommitResult struct {
+type oaContentWriterCommitResult struct {
 	Value CommitResult
 }
 
-type OAContentWriterAbortResult struct {
+type oaContentWriterAbortResult struct {
 	Value AbortResult
 }
 
-type OAContentChangesObserveResult struct {
+type oaContentChangesObserveResult struct {
 	Value ChangePage
 }
 
-type OAContentChangesListResult struct {
+type oaContentChangesListResult struct {
 	Value ListingPage
 }
 
+type oaHoldsHoldResult struct {
+	Value HoldResult
+}
+
+type oaHoldsReleaseResult struct {
+	Value ReleaseResult
+}
+
+type oaHoldsRenewResult struct {
+	Value RenewResult
+}
+
+type oaManifestsDescribeResult struct {
+	Value DescribeResult
+}
+
+type oaManifestsPublishResult struct {
+	Value PublishResult
+}
+
+type oaInventoryListResult struct {
+	Value InventoryPage
+}
+
+type oaInventoryHoldersResult struct {
+	Value InventoryPage
+}
+
+type oaInventoryUnheldResult struct {
+	Value InventoryPage
+}
+
+type oaInventoryFindResult struct {
+	Value InventoryPage
+}
+
+type oaContentRemoverRemoveResult struct {
+	Value RemoveResult
+}
+
+type oaInventorySourceDescribeResult struct {
+	Value SourceDescription
+}
+
+type oaInventorySourceSnapshotResult struct {
+	Value SourcePage
+}
+
+type oaInventorySourceObserveResult struct {
+	Value SourcePage
+}
+
+type oaInventorySourceVerifyResult struct {
+	Value SourcePage
+}
+
+type oaInventorySourceRemoveResult struct {
+	Value RemoveResult
+}
+
 func encResource(out []byte, v *Resource, depth int) []byte {
-	if v.Verification != "unverified" {
+	if !(v.Verification).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -628,14 +3816,14 @@ func encResource(out []byte, v *Resource, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "verification")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Verification)
+	out = esc(out, v.Verification.String())
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
 }
 
 func encOpenResult(out []byte, v *OpenResult, depth int) []byte {
-	if v.Outcome != "opened" && v.Outcome != "not_found" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unsupported" && v.Outcome != "unavailable" && v.Outcome != "exhausted" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -643,7 +3831,7 @@ func encOpenResult(out []byte, v *OpenResult, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	if v.Resource != nil {
 		out = append(out, ',')
 		out = append(out, '\n')
@@ -681,7 +3869,7 @@ func encChunk(out []byte, v *Chunk, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "eof")
 	out = append(out, ':', ' ')
-	if v.Eof {
+	if v.EOF {
 		out = append(out, 't', 'r', 'u', 'e')
 	} else {
 		out = append(out, 'f', 'a', 'l', 's', 'e')
@@ -692,7 +3880,7 @@ func encChunk(out []byte, v *Chunk, depth int) []byte {
 }
 
 func encReadResult(out []byte, v *ReadResult, depth int) []byte {
-	if v.Outcome != "data" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" && v.Outcome != "changed" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -700,7 +3888,7 @@ func encReadResult(out []byte, v *ReadResult, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	if v.Chunk != nil {
 		out = append(out, ',')
 		out = append(out, '\n')
@@ -715,7 +3903,7 @@ func encReadResult(out []byte, v *ReadResult, depth int) []byte {
 }
 
 func encCloseResult(out []byte, v *CloseResult, depth int) []byte {
-	if v.Outcome != "closed" && v.Outcome != "gap" && v.Outcome != "forbidden" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -723,7 +3911,7 @@ func encCloseResult(out []byte, v *CloseResult, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -760,7 +3948,7 @@ func encUpload(out []byte, v *Upload, depth int) []byte {
 }
 
 func encStored(out []byte, v *Stored, depth int) []byte {
-	if v.Evidence != "hashed" && v.Evidence != "named" {
+	if !(v.Evidence).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -780,14 +3968,14 @@ func encStored(out []byte, v *Stored, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "evidence")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Evidence)
+	out = esc(out, v.Evidence.String())
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
 }
 
 func encBeginResult(out []byte, v *BeginResult, depth int) []byte {
-	if v.Outcome != "started" && v.Outcome != "committed" && v.Outcome != "present" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "conflict" && v.Outcome != "too_large" && v.Outcome != "busy" && v.Outcome != "unsupported" && v.Outcome != "unavailable" && v.Outcome != "exhausted" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -795,7 +3983,7 @@ func encBeginResult(out []byte, v *BeginResult, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	if v.Upload != nil {
 		out = append(out, ',')
 		out = append(out, '\n')
@@ -824,7 +4012,7 @@ func encBeginResult(out []byte, v *BeginResult, depth int) []byte {
 }
 
 func encAppendResult(out []byte, v *AppendResult, depth int) []byte {
-	if v.Outcome != "accepted" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "out_of_order" && v.Outcome != "too_large" && v.Outcome != "unavailable" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -832,7 +4020,7 @@ func encAppendResult(out []byte, v *AppendResult, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	out = append(out, ',')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -845,7 +4033,7 @@ func encAppendResult(out []byte, v *AppendResult, depth int) []byte {
 }
 
 func encCommitResult(out []byte, v *CommitResult, depth int) []byte {
-	if v.Outcome != "committed" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "incomplete" && v.Outcome != "mismatch" && v.Outcome != "unavailable" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -853,7 +4041,7 @@ func encCommitResult(out []byte, v *CommitResult, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	if v.Stored != nil {
 		out = append(out, ',')
 		out = append(out, '\n')
@@ -874,7 +4062,7 @@ func encCommitResult(out []byte, v *CommitResult, depth int) []byte {
 }
 
 func encAbortResult(out []byte, v *AbortResult, depth int) []byte {
-	if v.Outcome != "aborted" && v.Outcome != "gap" && v.Outcome != "forbidden" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -882,14 +4070,14 @@ func encAbortResult(out []byte, v *AbortResult, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
 }
 
 func encChange(out []byte, v *Change, depth int) []byte {
-	if v.Kind != "added" && v.Kind != "removed" {
+	if !(v.Kind).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -903,7 +4091,7 @@ func encChange(out []byte, v *Change, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "kind")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Kind)
+	out = esc(out, v.Kind.String())
 	out = append(out, ',')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -922,7 +4110,7 @@ func encChange(out []byte, v *Change, depth int) []byte {
 }
 
 func encChangePage(out []byte, v *ChangePage, depth int) []byte {
-	if v.Outcome != "page" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -930,7 +4118,7 @@ func encChangePage(out []byte, v *ChangePage, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	out = append(out, ',')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -977,7 +4165,7 @@ func encListedObject(out []byte, v *ListedObject, depth int) []byte {
 }
 
 func encListingPage(out []byte, v *ListingPage, depth int) []byte {
-	if v.Outcome != "page" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" {
+	if !(v.Outcome).Known() {
 		panic(&Refusal{Word: "bad_enum", Offset: 0})
 	}
 	out = append(out, '{')
@@ -985,7 +4173,7 @@ func encListingPage(out []byte, v *ListingPage, depth int) []byte {
 	out = pad(out, depth+1)
 	out = esc(out, "outcome")
 	out = append(out, ':', ' ')
-	out = esc(out, v.Outcome)
+	out = esc(out, v.Outcome.String())
 	out = append(out, ',')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1019,7 +4207,854 @@ func encListingPage(out []byte, v *ListingPage, depth int) []byte {
 	return append(out, '}')
 }
 
-func encOAContentReaderOpenArguments(out []byte, v *OAContentReaderOpenArguments, depth int) []byte {
+func encObject(out []byte, v *Object, depth int) []byte {
+	if !(v.Evidence).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "locator")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Locator)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = num(out, v.Size)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "modified")
+	out = append(out, ':', ' ')
+	out = esc(out, writeTimestamp(v.Modified))
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "partial")
+	out = append(out, ':', ' ')
+	if v.Partial {
+		out = append(out, 't', 'r', 'u', 'e')
+	} else {
+		out = append(out, 'f', 'a', 'l', 's', 'e')
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "digest")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Digest)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "evidence")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Evidence.String())
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encEntry(out []byte, v *Entry, depth int) []byte {
+	if !(v.Evidence).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "role")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Role)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "digest")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Digest)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "size")
+	out = append(out, ':', ' ')
+	out = num(out, v.Size)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "media_type")
+	out = append(out, ':', ' ')
+	out = esc(out, v.MediaType)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "evidence")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Evidence.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "locator")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Locator)
+	if v.Manifest != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "manifest")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Manifest)
+	}
+	if len(v.Annotations) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "annotations")
+		out = append(out, ':', ' ')
+		out = strmap(out, v.Annotations, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encName(out []byte, v *Name, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "scheme")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Scheme)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "name")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Name)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encManifest(out []byte, v *Manifest, depth int) []byte {
+	if !(v.Addressing).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "id")
+	out = append(out, ':', ' ')
+	out = esc(out, v.ID)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "addressing")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Addressing.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "kind")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Kind)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "entries")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Entries, depth+1, encEntry)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "names")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Names, depth+1, encName)
+	if len(v.Descriptor) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "descriptor")
+		out = append(out, ':', ' ')
+		out = strmap(out, v.Descriptor, depth+1)
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "store")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Store)
+	if v.SupersededBy != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "superseded_by")
+		out = append(out, ':', ' ')
+		out = esc(out, v.SupersededBy)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encHolder(out []byte, v *Holder, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "account")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Account)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "program")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Program)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "instance")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Instance)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "established_by")
+	out = append(out, ':', ' ')
+	out = esc(out, v.EstablishedBy)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "domain")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Domain)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encBasis(out []byte, v *Basis, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "index")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Index)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "key")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Key)
+	if v.Role != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "role")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Role)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encHold(out []byte, v *Hold, depth int) []byte {
+	if !(v.Lifetime).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "id")
+	out = append(out, ':', ' ')
+	out = esc(out, v.ID)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "holder")
+	out = append(out, ':', ' ')
+	out = encHolder(out, &v.Holder, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Target)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "purpose")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Purpose)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "lifetime")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Lifetime.String())
+	if v.Expires != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "expires")
+		out = append(out, ':', ' ')
+		out = esc(out, writeTimestamp(v.Expires))
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "attestation")
+	out = append(out, ':', ' ')
+	out = esc(out, string(v.Attestation))
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "observed_at")
+	out = append(out, ':', ' ')
+	out = esc(out, writeTimestamp(v.ObservedAt))
+	if v.Basis != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "basis")
+		out = append(out, ':', ' ')
+		out = encBasis(out, v.Basis, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encDangling(out []byte, v *Dangling, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "holder")
+	out = append(out, ':', ' ')
+	out = encHolder(out, &v.Holder, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "basis")
+	out = append(out, ':', ' ')
+	out = encBasis(out, &v.Basis, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "reference")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Reference)
+	if v.ExpectedDigest != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "expected_digest")
+		out = append(out, ':', ' ')
+		out = esc(out, v.ExpectedDigest)
+	}
+	if v.ExpectedSize != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "expected_size")
+		out = append(out, ':', ' ')
+		out = num(out, v.ExpectedSize)
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "observed_at")
+	out = append(out, ':', ' ')
+	out = esc(out, writeTimestamp(v.ObservedAt))
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encStoreError(out []byte, v *StoreError, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "kind")
+	out = append(out, ':', ' ')
+	out = esc(out, string(v.Kind))
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "locator")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Locator)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "detail")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Detail)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encStore(out []byte, v *Store, depth int) []byte {
+	if !(v.Placement).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "name")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Name)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "program")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Program)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "locator")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Locator)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "rule")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Rule)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "present")
+	out = append(out, ':', ' ')
+	if v.Present {
+		out = append(out, 't', 'r', 'u', 'e')
+	} else {
+		out = append(out, 'f', 'a', 'l', 's', 'e')
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "errors")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Errors, depth+1, encStoreError)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "placement")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Placement.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "domain")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Domain)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encHoldResult(out []byte, v *HoldResult, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	if v.Hold != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "hold")
+		out = append(out, ':', ' ')
+		out = encHold(out, v.Hold, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encReleaseResult(out []byte, v *ReleaseResult, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encRenewResult(out []byte, v *RenewResult, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	if v.Hold != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "hold")
+		out = append(out, ':', ' ')
+		out = encHold(out, v.Hold, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encDescribeResult(out []byte, v *DescribeResult, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	if v.Manifest != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "manifest")
+		out = append(out, ':', ' ')
+		out = encManifest(out, v.Manifest, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encPublishResult(out []byte, v *PublishResult, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	if v.Manifest != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "manifest")
+		out = append(out, ':', ' ')
+		out = encManifest(out, v.Manifest, depth+1)
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "missing")
+	out = append(out, ':', ' ')
+	out = strs(out, v.Missing, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encManifestHolders(out []byte, v *ManifestHolders, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "manifest")
+	out = append(out, ':', ' ')
+	out = encManifest(out, &v.Manifest, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "holds")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Holds, depth+1, encHold)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encObjectHolders(out []byte, v *ObjectHolders, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "object")
+	out = append(out, ':', ' ')
+	out = encObject(out, &v.Object, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "store")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Store)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "holds")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Holds, depth+1, encHold)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encInventoryPage(out []byte, v *InventoryPage, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "stores")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Stores, depth+1, encStore)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "manifests")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Manifests, depth+1, encManifestHolders)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "objects")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Objects, depth+1, encObjectHolders)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "dangling")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Dangling, depth+1, encDangling)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "continuation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Continuation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "complete")
+	out = append(out, ':', ' ')
+	if v.Complete {
+		out = append(out, 't', 'r', 'u', 'e')
+	} else {
+		out = append(out, 'f', 'a', 'l', 's', 'e')
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "cursor")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Cursor)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "grace_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.GraceMs)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "audit_retention_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.AuditRetentionMs)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encRemoveResult(out []byte, v *RemoveResult, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "holders")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Holders, depth+1, encHolder)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encSourceDescription(out []byte, v *SourceDescription, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "name")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Name)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "stores")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Stores, depth+1, encStore)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "schemes")
+	out = append(out, ':', ' ')
+	out = strs(out, v.Schemes, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "capabilities")
+	out = append(out, ':', ' ')
+	out = strs(out, v.Capabilities, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encSourceChange(out []byte, v *SourceChange, depth int) []byte {
+	if !(v.Kind).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "sequence")
+	out = append(out, ':', ' ')
+	out = num(out, v.Sequence)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "kind")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Kind.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Target)
+	if v.Hold != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "hold")
+		out = append(out, ':', ' ')
+		out = encHold(out, v.Hold, depth+1)
+	}
+	if v.Store != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "store")
+		out = append(out, ':', ' ')
+		out = encStore(out, v.Store, depth+1)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encSourcePage(out []byte, v *SourcePage, depth int) []byte {
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "stores")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Stores, depth+1, encStore)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "manifests")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Manifests, depth+1, encManifestHolders)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "objects")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Objects, depth+1, encObjectHolders)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "dangling")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Dangling, depth+1, encDangling)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "changes")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Changes, depth+1, encSourceChange)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "continuation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Continuation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "complete")
+	out = append(out, ':', ' ')
+	if v.Complete {
+		out = append(out, 't', 'r', 'u', 'e')
+	} else {
+		out = append(out, 'f', 'a', 'l', 's', 'e')
+	}
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "cursor")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Cursor)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentReaderOpenArguments(out []byte, v *oaContentReaderOpenArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1031,7 +5066,7 @@ func encOAContentReaderOpenArguments(out []byte, v *OAContentReaderOpenArguments
 	return append(out, '}')
 }
 
-func encOAContentReaderReadArguments(out []byte, v *OAContentReaderReadArguments, depth int) []byte {
+func encOAContentReaderReadArguments(out []byte, v *oaContentReaderReadArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1055,7 +5090,7 @@ func encOAContentReaderReadArguments(out []byte, v *OAContentReaderReadArguments
 	return append(out, '}')
 }
 
-func encOAContentReaderCloseArguments(out []byte, v *OAContentReaderCloseArguments, depth int) []byte {
+func encOAContentReaderCloseArguments(out []byte, v *oaContentReaderCloseArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1067,7 +5102,7 @@ func encOAContentReaderCloseArguments(out []byte, v *OAContentReaderCloseArgumen
 	return append(out, '}')
 }
 
-func encOAContentWriterBeginArguments(out []byte, v *OAContentWriterBeginArguments, depth int) []byte {
+func encOAContentWriterBeginArguments(out []byte, v *oaContentWriterBeginArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1091,7 +5126,7 @@ func encOAContentWriterBeginArguments(out []byte, v *OAContentWriterBeginArgumen
 	return append(out, '}')
 }
 
-func encOAContentWriterAppendArguments(out []byte, v *OAContentWriterAppendArguments, depth int) []byte {
+func encOAContentWriterAppendArguments(out []byte, v *oaContentWriterAppendArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1115,7 +5150,7 @@ func encOAContentWriterAppendArguments(out []byte, v *OAContentWriterAppendArgum
 	return append(out, '}')
 }
 
-func encOAContentWriterCommitArguments(out []byte, v *OAContentWriterCommitArguments, depth int) []byte {
+func encOAContentWriterCommitArguments(out []byte, v *oaContentWriterCommitArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1127,7 +5162,7 @@ func encOAContentWriterCommitArguments(out []byte, v *OAContentWriterCommitArgum
 	return append(out, '}')
 }
 
-func encOAContentWriterAbortArguments(out []byte, v *OAContentWriterAbortArguments, depth int) []byte {
+func encOAContentWriterAbortArguments(out []byte, v *oaContentWriterAbortArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1139,7 +5174,7 @@ func encOAContentWriterAbortArguments(out []byte, v *OAContentWriterAbortArgumen
 	return append(out, '}')
 }
 
-func encOAContentChangesObserveArguments(out []byte, v *OAContentChangesObserveArguments, depth int) []byte {
+func encOAContentChangesObserveArguments(out []byte, v *oaContentChangesObserveArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1163,7 +5198,7 @@ func encOAContentChangesObserveArguments(out []byte, v *OAContentChangesObserveA
 	return append(out, '}')
 }
 
-func encOAContentChangesListArguments(out []byte, v *OAContentChangesListArguments, depth int) []byte {
+func encOAContentChangesListArguments(out []byte, v *oaContentChangesListArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1181,7 +5216,249 @@ func encOAContentChangesListArguments(out []byte, v *OAContentChangesListArgumen
 	return append(out, '}')
 }
 
-func encOAServiceFrame(out []byte, v *OAServiceFrame, depth int) []byte {
+func encOAHoldsHoldArguments(out []byte, v *oaHoldsHoldArguments, depth int) []byte {
+	if !(v.Lifetime).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "request")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Request)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Target)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "purpose")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Purpose)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "lifetime")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Lifetime.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "lease_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.LeaseMs)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAHoldsReleaseArguments(out []byte, v *oaHoldsReleaseArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "hold")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Hold)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAHoldsRenewArguments(out []byte, v *oaHoldsRenewArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "hold")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Hold)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "lease_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.LeaseMs)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAManifestsDescribeArguments(out []byte, v *oaManifestsDescribeArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "id")
+	out = append(out, ':', ' ')
+	out = esc(out, v.ID)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAManifestsPublishArguments(out []byte, v *oaManifestsPublishArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "request")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Request)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "manifest")
+	out = append(out, ':', ' ')
+	out = encManifest(out, &v.Manifest, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryListArguments(out []byte, v *oaInventoryListArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "continuation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Continuation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "limit")
+	out = append(out, ':', ' ')
+	out = num(out, v.Limit)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryHoldersArguments(out []byte, v *oaInventoryHoldersArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Target)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryUnheldArguments(out []byte, v *oaInventoryUnheldArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "continuation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Continuation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "limit")
+	out = append(out, ':', ' ')
+	out = num(out, v.Limit)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryFindArguments(out []byte, v *oaInventoryFindArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "digest")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Digest)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentRemoverRemoveArguments(out []byte, v *oaContentRemoverRemoveArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Target)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceDescribeArguments(out []byte, v *oaInventorySourceDescribeArguments, depth int) []byte {
+	out = append(out, '{')
+	return append(out, '}')
+}
+
+func encOAInventorySourceSnapshotArguments(out []byte, v *oaInventorySourceSnapshotArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "continuation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Continuation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "limit")
+	out = append(out, ':', ' ')
+	out = num(out, v.Limit)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceObserveArguments(out []byte, v *oaInventorySourceObserveArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "cursor")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Cursor)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "max_changes")
+	out = append(out, ':', ' ')
+	out = num(out, v.MaxChanges)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "wait_ms")
+	out = append(out, ':', ' ')
+	out = num(out, v.WaitMs)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceVerifyArguments(out []byte, v *oaInventorySourceVerifyArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Target)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceRemoveArguments(out []byte, v *oaInventorySourceRemoveArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "target")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Target)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAServiceFrame(out []byte, v *oaServiceFrame, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1211,7 +5488,7 @@ func encOAServiceFrame(out []byte, v *OAServiceFrame, depth int) []byte {
 	return append(out, '}')
 }
 
-func encOAServiceReply(out []byte, v *OAServiceReply, depth int) []byte {
+func encOAServiceReply(out []byte, v *oaServiceReply, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1251,7 +5528,7 @@ func encOAServiceReply(out []byte, v *OAServiceReply, depth int) []byte {
 	return append(out, '}')
 }
 
-func encOAServiceError(out []byte, v *OAServiceError, depth int) []byte {
+func encOAServiceError(out []byte, v *oaServiceError, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1269,7 +5546,7 @@ func encOAServiceError(out []byte, v *OAServiceError, depth int) []byte {
 	return append(out, '}')
 }
 
-func encOAContentReaderOpenResult(out []byte, v *OAContentReaderOpenResult, depth int) []byte {
+func encOAContentReaderOpenResult(out []byte, v *oaContentReaderOpenResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1281,7 +5558,7 @@ func encOAContentReaderOpenResult(out []byte, v *OAContentReaderOpenResult, dept
 	return append(out, '}')
 }
 
-func encOAContentReaderReadResult(out []byte, v *OAContentReaderReadResult, depth int) []byte {
+func encOAContentReaderReadResult(out []byte, v *oaContentReaderReadResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1293,7 +5570,7 @@ func encOAContentReaderReadResult(out []byte, v *OAContentReaderReadResult, dept
 	return append(out, '}')
 }
 
-func encOAContentReaderCloseResult(out []byte, v *OAContentReaderCloseResult, depth int) []byte {
+func encOAContentReaderCloseResult(out []byte, v *oaContentReaderCloseResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1305,7 +5582,7 @@ func encOAContentReaderCloseResult(out []byte, v *OAContentReaderCloseResult, de
 	return append(out, '}')
 }
 
-func encOAContentWriterBeginResult(out []byte, v *OAContentWriterBeginResult, depth int) []byte {
+func encOAContentWriterBeginResult(out []byte, v *oaContentWriterBeginResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1317,7 +5594,7 @@ func encOAContentWriterBeginResult(out []byte, v *OAContentWriterBeginResult, de
 	return append(out, '}')
 }
 
-func encOAContentWriterAppendResult(out []byte, v *OAContentWriterAppendResult, depth int) []byte {
+func encOAContentWriterAppendResult(out []byte, v *oaContentWriterAppendResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1329,7 +5606,7 @@ func encOAContentWriterAppendResult(out []byte, v *OAContentWriterAppendResult, 
 	return append(out, '}')
 }
 
-func encOAContentWriterCommitResult(out []byte, v *OAContentWriterCommitResult, depth int) []byte {
+func encOAContentWriterCommitResult(out []byte, v *oaContentWriterCommitResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1341,7 +5618,7 @@ func encOAContentWriterCommitResult(out []byte, v *OAContentWriterCommitResult, 
 	return append(out, '}')
 }
 
-func encOAContentWriterAbortResult(out []byte, v *OAContentWriterAbortResult, depth int) []byte {
+func encOAContentWriterAbortResult(out []byte, v *oaContentWriterAbortResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1353,7 +5630,7 @@ func encOAContentWriterAbortResult(out []byte, v *OAContentWriterAbortResult, de
 	return append(out, '}')
 }
 
-func encOAContentChangesObserveResult(out []byte, v *OAContentChangesObserveResult, depth int) []byte {
+func encOAContentChangesObserveResult(out []byte, v *oaContentChangesObserveResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -1365,13 +5642,193 @@ func encOAContentChangesObserveResult(out []byte, v *OAContentChangesObserveResu
 	return append(out, '}')
 }
 
-func encOAContentChangesListResult(out []byte, v *OAContentChangesListResult, depth int) []byte {
+func encOAContentChangesListResult(out []byte, v *oaContentChangesListResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
 	out = esc(out, "value")
 	out = append(out, ':', ' ')
 	out = encListingPage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAHoldsHoldResult(out []byte, v *oaHoldsHoldResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encHoldResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAHoldsReleaseResult(out []byte, v *oaHoldsReleaseResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encReleaseResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAHoldsRenewResult(out []byte, v *oaHoldsRenewResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encRenewResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAManifestsDescribeResult(out []byte, v *oaManifestsDescribeResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encDescribeResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAManifestsPublishResult(out []byte, v *oaManifestsPublishResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encPublishResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryListResult(out []byte, v *oaInventoryListResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encInventoryPage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryHoldersResult(out []byte, v *oaInventoryHoldersResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encInventoryPage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryUnheldResult(out []byte, v *oaInventoryUnheldResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encInventoryPage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryFindResult(out []byte, v *oaInventoryFindResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encInventoryPage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAContentRemoverRemoveResult(out []byte, v *oaContentRemoverRemoveResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encRemoveResult(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceDescribeResult(out []byte, v *oaInventorySourceDescribeResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encSourceDescription(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceSnapshotResult(out []byte, v *oaInventorySourceSnapshotResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encSourcePage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceObserveResult(out []byte, v *oaInventorySourceObserveResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encSourcePage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceVerifyResult(out []byte, v *oaInventorySourceVerifyResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encSourcePage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventorySourceRemoveResult(out []byte, v *oaInventorySourceRemoveResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encRemoveResult(out, &v.Value, depth+1)
 	out = append(out, '\n')
 	out = pad(out, depth)
 	return append(out, '}')
@@ -1398,6 +5855,7 @@ type reader struct {
 	buf   []byte
 	pos   int
 	depth int
+ limit int
 }
 
 func (r *reader) refuse(word string) error { return &Refusal{Word: word, Offset: r.pos} }
@@ -1422,7 +5880,7 @@ func (r *reader) ws() {
 
 func (r *reader) enter() error {
 	r.depth++
-	if r.depth > depthLimit {
+	if r.depth > r.depthLimit() {
 		return r.refuse("depth_exceeded")
 	}
 	return nil
@@ -1860,6 +6318,55 @@ func (r *reader) skipContainer() error {
 	return nil
 }
 
+func (r *reader) strMap() (map[string]string, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	out := map[string]string{}
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			k, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			if _, again := out[k]; again {
+				return nil, r.refuse("duplicate_key")
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			v, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			out[k] = v
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	return out, nil
+}
+
 func decodeList[T any](r *reader, elem func(*reader) (*T, error)) ([]T, error) {
 	if r.at() != '[' {
 		return nil, r.refuse("wrong_type")
@@ -1891,6 +6398,175 @@ func decodeList[T any](r *reader, elem func(*reader) (*T, error)) ([]T, error) {
 	r.pos++
 	r.depth--
 	return out, nil
+}
+
+func digits(s string, i, n int) bool {
+	if i+n > len(s) {
+		return false
+	}
+	for k := 0; k < n; k++ {
+		if s[i+k] < '0' || s[i+k] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func datePart(s string) bool {
+	return len(s) >= 19 && digits(s, 0, 4) && s[4] == '-' && digits(s, 5, 2) && s[7] == '-' &&
+		digits(s, 8, 2) && digits(s, 11, 2) && s[13] == ':' && digits(s, 14, 2) && s[16] == ':' && digits(s, 17, 2)
+}
+
+// [DEF-G1] rfc3339-wide: what a reader accepts. Any fraction of one to nine
+// digits or none, either case of the separators, and a numeric offset.
+func lexicalTimestamp(s string) bool {
+	if !datePart(s) || (s[10] != 'T' && s[10] != 't') {
+		return false
+	}
+	i := 19
+	if i < len(s) && s[i] == '.' {
+		i++
+		n := 0
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+			n++
+		}
+		if n < 1 || n > 9 {
+			return false
+		}
+	}
+	if i >= len(s) {
+		return false
+	}
+	if s[i] == 'Z' || s[i] == 'z' {
+		return i+1 == len(s)
+	}
+	if s[i] != '+' && s[i] != '-' {
+		return false
+	}
+	return len(s) == i+6 && digits(s, i+1, 2) && s[i+3] == ':' && digits(s, i+4, 2)
+}
+
+// [DEF-G2] rfc3339-micros: what a writer emits. Exactly six fractional digits,
+// upper-case separators, UTC.
+func microsTimestamp(s string) bool {
+	return len(s) == 27 && normalizedTimestamp(s) == s
+}
+
+func (r *reader) timestamp() (string, error) {
+	at := r.pos
+	s, err := r.str()
+	if err != nil {
+		return "", err
+	}
+	if !wideTimestamp(s) {
+		r.pos = at
+		return "", r.refuse("bad_timestamp")
+	}
+	return s, nil
+}
+
+func timestampNumber(s string, i, n int) int {
+	v := 0
+	for k := 0; k < n; k++ {
+		v = v*10 + int(s[i+k]-'0')
+	}
+	return v
+}
+func timestampDays(y, m int) int {
+	if m == 2 {
+		if y%4 == 0 && (y%100 != 0 || y%400 == 0) {
+			return 29
+		}
+		return 28
+	}
+	if m == 4 || m == 6 || m == 9 || m == 11 {
+		return 30
+	}
+	return 31
+}
+func normalizedTimestamp(s string) string {
+	if !lexicalTimestamp(s) {
+		return ""
+	}
+	y, m, d := timestampNumber(s, 0, 4), timestampNumber(s, 5, 2), timestampNumber(s, 8, 2)
+	h, minute, sec := timestampNumber(s, 11, 2), timestampNumber(s, 14, 2), timestampNumber(s, 17, 2)
+	if m < 1 || m > 12 || d < 1 || d > timestampDays(y, m) || h > 23 || minute > 59 || sec > 59 {
+		return ""
+	}
+	i, fraction := 19, ""
+	if s[i] == '.' {
+		i++
+		start := i
+		for s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		fraction = s[start:i]
+	}
+	total := h*60 + minute
+	if s[i] == '+' || s[i] == '-' {
+		oh, om := timestampNumber(s, i+1, 2), timestampNumber(s, i+4, 2)
+		if oh > 23 || om > 59 {
+			return ""
+		}
+		offset := oh*60 + om
+		if s[i] == '+' {
+			total -= offset
+		} else {
+			total += offset
+		}
+	}
+	if total < 0 {
+		total += 1440
+		d--
+	} else if total >= 1440 {
+		total -= 1440
+		d++
+	}
+	if d == 0 {
+		m--
+		if m == 0 {
+			y--
+			m = 12
+		}
+		d = timestampDays(y, m)
+	}
+	if d > timestampDays(y, m) {
+		d = 1
+		m++
+		if m == 13 {
+			y++
+			m = 1
+		}
+	}
+	if y < 0 || y > 9999 {
+		return ""
+	}
+	out := []byte("0000-00-00T00:00:00.000000Z")
+	put := func(at, width, value int) {
+		for k := width - 1; k >= 0; k-- {
+			out[at+k] = byte(value%10) + '0'
+			value /= 10
+		}
+	}
+	put(0, 4, y)
+	put(5, 2, m)
+	put(8, 2, d)
+	put(11, 2, total/60)
+	put(14, 2, total%60)
+	put(17, 2, sec)
+	for k := 0; k < 6 && k < len(fraction); k++ {
+		out[20+k] = fraction[k]
+	}
+	return string(out)
+}
+func wideTimestamp(s string) bool { return normalizedTimestamp(s) != "" }
+func writeTimestamp(s string) string {
+	result := normalizedTimestamp(s)
+	if result == "" {
+		panic(&Refusal{Word: "bad_timestamp", Offset: 0})
+	}
+	return result
 }
 
 func (r *reader) decodeResource() (*Resource, error) {
@@ -1960,7 +6636,11 @@ func (r *reader) decodeResource() (*Resource, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Verification = x
+				word, ok := ParseVerification(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Verification = word
 			default:
 				return nil, r.refuse("unknown_field")
 			}
@@ -1979,7 +6659,7 @@ func (r *reader) decodeResource() (*Resource, error) {
 	if seen&15 != 15 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Verification != "unverified" {
+	if !(v.Verification).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2022,7 +6702,11 @@ func (r *reader) decodeOpenResult() (*OpenResult, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseOpenOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			case "resource":
 				if seen&2 != 0 {
 					return nil, r.refuse("duplicate_field")
@@ -2051,7 +6735,7 @@ func (r *reader) decodeOpenResult() (*OpenResult, error) {
 	if seen&1 != 1 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "opened" && v.Outcome != "not_found" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unsupported" && v.Outcome != "unavailable" && v.Outcome != "exhausted" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2124,7 +6808,7 @@ func (r *reader) decodeChunk() (*Chunk, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Eof = x
+				v.EOF = x
 			default:
 				return nil, r.refuse("unknown_field")
 			}
@@ -2183,7 +6867,11 @@ func (r *reader) decodeReadResult() (*ReadResult, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseReadOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			case "chunk":
 				if seen&2 != 0 {
 					return nil, r.refuse("duplicate_field")
@@ -2212,7 +6900,7 @@ func (r *reader) decodeReadResult() (*ReadResult, error) {
 	if seen&1 != 1 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "data" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" && v.Outcome != "changed" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2255,7 +6943,11 @@ func (r *reader) decodeCloseResult() (*CloseResult, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseCloseOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			default:
 				return nil, r.refuse("unknown_field")
 			}
@@ -2274,7 +6966,7 @@ func (r *reader) decodeCloseResult() (*CloseResult, error) {
 	if seen&1 != 1 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "closed" && v.Outcome != "gap" && v.Outcome != "forbidden" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2426,7 +7118,11 @@ func (r *reader) decodeStored() (*Stored, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Evidence = x
+				word, ok := ParseEvidence(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Evidence = word
 			default:
 				return nil, r.refuse("unknown_field")
 			}
@@ -2445,7 +7141,7 @@ func (r *reader) decodeStored() (*Stored, error) {
 	if seen&7 != 7 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Evidence != "hashed" && v.Evidence != "named" {
+	if !(v.Evidence).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2488,7 +7184,11 @@ func (r *reader) decodeBeginResult() (*BeginResult, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseBeginOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			case "upload":
 				if seen&2 != 0 {
 					return nil, r.refuse("duplicate_field")
@@ -2537,7 +7237,7 @@ func (r *reader) decodeBeginResult() (*BeginResult, error) {
 	if seen&9 != 9 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "started" && v.Outcome != "committed" && v.Outcome != "present" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "conflict" && v.Outcome != "too_large" && v.Outcome != "busy" && v.Outcome != "unsupported" && v.Outcome != "unavailable" && v.Outcome != "exhausted" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2580,7 +7280,11 @@ func (r *reader) decodeAppendResult() (*AppendResult, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseAppendOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			case "received":
 				if seen&2 != 0 {
 					return nil, r.refuse("duplicate_field")
@@ -2609,7 +7313,7 @@ func (r *reader) decodeAppendResult() (*AppendResult, error) {
 	if seen&3 != 3 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "accepted" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "out_of_order" && v.Outcome != "too_large" && v.Outcome != "unavailable" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2652,7 +7356,11 @@ func (r *reader) decodeCommitResult() (*CommitResult, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseCommitOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			case "stored":
 				if seen&2 != 0 {
 					return nil, r.refuse("duplicate_field")
@@ -2691,7 +7399,7 @@ func (r *reader) decodeCommitResult() (*CommitResult, error) {
 	if seen&5 != 5 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "committed" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "incomplete" && v.Outcome != "mismatch" && v.Outcome != "unavailable" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2734,7 +7442,11 @@ func (r *reader) decodeAbortResult() (*AbortResult, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseAbortOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			default:
 				return nil, r.refuse("unknown_field")
 			}
@@ -2753,7 +7465,7 @@ func (r *reader) decodeAbortResult() (*AbortResult, error) {
 	if seen&1 != 1 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "aborted" && v.Outcome != "gap" && v.Outcome != "forbidden" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2806,7 +7518,11 @@ func (r *reader) decodeChange() (*Change, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Kind = x
+				word, ok := ParseChangeKind(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Kind = word
 			case "digest":
 				if seen&4 != 0 {
 					return nil, r.refuse("duplicate_field")
@@ -2845,7 +7561,7 @@ func (r *reader) decodeChange() (*Change, error) {
 	if seen&15 != 15 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Kind != "added" && v.Kind != "removed" {
+	if !(v.Kind).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -2888,7 +7604,11 @@ func (r *reader) decodeChangePage() (*ChangePage, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseChangePageOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			case "changes":
 				if seen&2 != 0 {
 					return nil, r.refuse("duplicate_field")
@@ -2937,7 +7657,7 @@ func (r *reader) decodeChangePage() (*ChangePage, error) {
 	if seen&15 != 15 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "page" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
@@ -3049,7 +7769,11 @@ func (r *reader) decodeListingPage() (*ListingPage, error) {
 				if err != nil {
 					return nil, err
 				}
-				v.Outcome = x
+				word, ok := ParseListingOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
 			case "objects":
 				if seen&2 != 0 {
 					return nil, r.refuse("duplicate_field")
@@ -3108,13 +7832,13 @@ func (r *reader) decodeListingPage() (*ListingPage, error) {
 	if seen&31 != 31 {
 		return nil, r.refuse("missing_field")
 	}
-	if v.Outcome != "page" && v.Outcome != "gap" && v.Outcome != "forbidden" && v.Outcome != "invalid" && v.Outcome != "unavailable" {
+	if !(v.Outcome).Known() {
 		return nil, r.refuse("bad_enum")
 	}
 	return v, nil
 }
 
-func (r *reader) decodeOAContentReaderOpenArguments() (*OAContentReaderOpenArguments, error) {
+func (r *reader) decodeObject() (*Object, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3122,7 +7846,2230 @@ func (r *reader) decodeOAContentReaderOpenArguments() (*OAContentReaderOpenArgum
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentReaderOpenArguments{}
+	v := &Object{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "locator":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Locator = x
+			case "size":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			case "modified":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.timestamp()
+				if err != nil {
+					return nil, err
+				}
+				v.Modified = x
+			case "partial":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.boolean()
+				if err != nil {
+					return nil, err
+				}
+				v.Partial = x
+			case "digest":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Digest = x
+			case "evidence":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseEvidence(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Evidence = word
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&63 != 63 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Evidence).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeEntry() (*Entry, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Entry{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "role":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Role = x
+			case "digest":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Digest = x
+			case "size":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Size = x
+			case "media_type":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.MediaType = x
+			case "evidence":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseEvidence(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Evidence = word
+			case "locator":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Locator = x
+			case "manifest":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Manifest = x
+			case "annotations":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.strMap()
+				if err != nil {
+					return nil, err
+				}
+				v.Annotations = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&63 != 63 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Evidence).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeName() (*Name, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Name{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "scheme":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Scheme = x
+			case "name":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Name = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeManifest() (*Manifest, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Manifest{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "id":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ID = x
+			case "addressing":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseAddressing(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Addressing = word
+			case "kind":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Kind = x
+			case "entries":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := decodeList(r, (*reader).decodeEntry)
+				if err != nil {
+					return nil, err
+				}
+				v.Entries = x
+			case "names":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := decodeList(r, (*reader).decodeName)
+				if err != nil {
+					return nil, err
+				}
+				v.Names = x
+			case "descriptor":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.strMap()
+				if err != nil {
+					return nil, err
+				}
+				v.Descriptor = x
+			case "store":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Store = x
+			case "superseded_by":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.SupersededBy = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&95 != 95 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Addressing).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeHolder() (*Holder, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Holder{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "account":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Account = x
+			case "program":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Program = x
+			case "instance":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Instance = x
+			case "established_by":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.EstablishedBy = x
+			case "domain":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Domain = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&31 != 31 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeBasis() (*Basis, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Basis{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "index":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Index = x
+			case "key":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Key = x
+			case "role":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Role = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeHold() (*Hold, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Hold{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "id":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ID = x
+			case "holder":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeHolder()
+				if err != nil {
+					return nil, err
+				}
+				v.Holder = *x
+			case "target":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = x
+			case "purpose":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Purpose = x
+			case "lifetime":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseLifetime(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Lifetime = word
+			case "expires":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.timestamp()
+				if err != nil {
+					return nil, err
+				}
+				v.Expires = x
+			case "attestation":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Attestation = Attestation(x)
+			case "observed_at":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.timestamp()
+				if err != nil {
+					return nil, err
+				}
+				v.ObservedAt = x
+			case "basis":
+				if seen&256 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 256
+				x, err := r.decodeBasis()
+				if err != nil {
+					return nil, err
+				}
+				v.Basis = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&223 != 223 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Lifetime).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeDangling() (*Dangling, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Dangling{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "holder":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeHolder()
+				if err != nil {
+					return nil, err
+				}
+				v.Holder = *x
+			case "basis":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeBasis()
+				if err != nil {
+					return nil, err
+				}
+				v.Basis = *x
+			case "reference":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reference = x
+			case "expected_digest":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ExpectedDigest = x
+			case "expected_size":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.ExpectedSize = x
+			case "observed_at":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.timestamp()
+				if err != nil {
+					return nil, err
+				}
+				v.ObservedAt = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&39 != 39 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeStoreError() (*StoreError, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &StoreError{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "kind":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Kind = StoreErrorKind(x)
+			case "locator":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Locator = x
+			case "detail":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Detail = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeStore() (*Store, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &Store{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "name":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Name = x
+			case "program":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Program = x
+			case "locator":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Locator = x
+			case "rule":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Rule = x
+			case "present":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.boolean()
+				if err != nil {
+					return nil, err
+				}
+				v.Present = x
+			case "errors":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := decodeList(r, (*reader).decodeStoreError)
+				if err != nil {
+					return nil, err
+				}
+				v.Errors = x
+			case "placement":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParsePlacement(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Placement = word
+			case "domain":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Domain = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&255 != 255 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Placement).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeHoldResult() (*HoldResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &HoldResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseHoldOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "hold":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeHold()
+				if err != nil {
+					return nil, err
+				}
+				v.Hold = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeReleaseResult() (*ReleaseResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &ReleaseResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseReleaseOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeRenewResult() (*RenewResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &RenewResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseRenewOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "hold":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeHold()
+				if err != nil {
+					return nil, err
+				}
+				v.Hold = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeDescribeResult() (*DescribeResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &DescribeResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseDescribeOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "manifest":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeManifest()
+				if err != nil {
+					return nil, err
+				}
+				v.Manifest = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodePublishResult() (*PublishResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &PublishResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParsePublishOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "manifest":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeManifest()
+				if err != nil {
+					return nil, err
+				}
+				v.Manifest = x
+			case "missing":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				v.Missing = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&5 != 5 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeManifestHolders() (*ManifestHolders, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &ManifestHolders{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "manifest":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeManifest()
+				if err != nil {
+					return nil, err
+				}
+				v.Manifest = *x
+			case "holds":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := decodeList(r, (*reader).decodeHold)
+				if err != nil {
+					return nil, err
+				}
+				v.Holds = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeObjectHolders() (*ObjectHolders, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &ObjectHolders{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "object":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeObject()
+				if err != nil {
+					return nil, err
+				}
+				v.Object = *x
+			case "store":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Store = x
+			case "holds":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := decodeList(r, (*reader).decodeHold)
+				if err != nil {
+					return nil, err
+				}
+				v.Holds = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeInventoryPage() (*InventoryPage, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &InventoryPage{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseInventoryOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "stores":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := decodeList(r, (*reader).decodeStore)
+				if err != nil {
+					return nil, err
+				}
+				v.Stores = x
+			case "manifests":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := decodeList(r, (*reader).decodeManifestHolders)
+				if err != nil {
+					return nil, err
+				}
+				v.Manifests = x
+			case "objects":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := decodeList(r, (*reader).decodeObjectHolders)
+				if err != nil {
+					return nil, err
+				}
+				v.Objects = x
+			case "dangling":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := decodeList(r, (*reader).decodeDangling)
+				if err != nil {
+					return nil, err
+				}
+				v.Dangling = x
+			case "continuation":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Continuation = x
+			case "complete":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.boolean()
+				if err != nil {
+					return nil, err
+				}
+				v.Complete = x
+			case "cursor":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Cursor = x
+			case "grace_ms":
+				if seen&256 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 256
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.GraceMs = x
+			case "audit_retention_ms":
+				if seen&512 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 512
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.AuditRetentionMs = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1023 != 1023 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeRemoveResult() (*RemoveResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &RemoveResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseRemoveOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "holders":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := decodeList(r, (*reader).decodeHolder)
+				if err != nil {
+					return nil, err
+				}
+				v.Holders = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeSourceDescription() (*SourceDescription, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &SourceDescription{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseSourceDescriptionOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "name":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Name = x
+			case "stores":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := decodeList(r, (*reader).decodeStore)
+				if err != nil {
+					return nil, err
+				}
+				v.Stores = x
+			case "schemes":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				v.Schemes = x
+			case "capabilities":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				v.Capabilities = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&31 != 31 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeSourceChange() (*SourceChange, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &SourceChange{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "sequence":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Sequence = x
+			case "kind":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseSourceChangeKind(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Kind = word
+			case "target":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = x
+			case "hold":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.decodeHold()
+				if err != nil {
+					return nil, err
+				}
+				v.Hold = x
+			case "store":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.decodeStore()
+				if err != nil {
+					return nil, err
+				}
+				v.Store = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Kind).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeSourcePage() (*SourcePage, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &SourcePage{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseSourcePageOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "stores":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := decodeList(r, (*reader).decodeStore)
+				if err != nil {
+					return nil, err
+				}
+				v.Stores = x
+			case "manifests":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := decodeList(r, (*reader).decodeManifestHolders)
+				if err != nil {
+					return nil, err
+				}
+				v.Manifests = x
+			case "objects":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := decodeList(r, (*reader).decodeObjectHolders)
+				if err != nil {
+					return nil, err
+				}
+				v.Objects = x
+			case "dangling":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := decodeList(r, (*reader).decodeDangling)
+				if err != nil {
+					return nil, err
+				}
+				v.Dangling = x
+			case "changes":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := decodeList(r, (*reader).decodeSourceChange)
+				if err != nil {
+					return nil, err
+				}
+				v.Changes = x
+			case "continuation":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Continuation = x
+			case "complete":
+				if seen&128 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 128
+				x, err := r.boolean()
+				if err != nil {
+					return nil, err
+				}
+				v.Complete = x
+			case "cursor":
+				if seen&256 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 256
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Cursor = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&511 != 511 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentReaderOpenArguments() (*oaContentReaderOpenArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaContentReaderOpenArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3173,7 +10120,7 @@ func (r *reader) decodeOAContentReaderOpenArguments() (*OAContentReaderOpenArgum
 	return v, nil
 }
 
-func (r *reader) decodeOAContentReaderReadArguments() (*OAContentReaderReadArguments, error) {
+func (r *reader) decodeOAContentReaderReadArguments() (*oaContentReaderReadArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3181,7 +10128,7 @@ func (r *reader) decodeOAContentReaderReadArguments() (*OAContentReaderReadArgum
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentReaderReadArguments{}
+	v := &oaContentReaderReadArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3252,7 +10199,7 @@ func (r *reader) decodeOAContentReaderReadArguments() (*OAContentReaderReadArgum
 	return v, nil
 }
 
-func (r *reader) decodeOAContentReaderCloseArguments() (*OAContentReaderCloseArguments, error) {
+func (r *reader) decodeOAContentReaderCloseArguments() (*oaContentReaderCloseArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3260,7 +10207,7 @@ func (r *reader) decodeOAContentReaderCloseArguments() (*OAContentReaderCloseArg
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentReaderCloseArguments{}
+	v := &oaContentReaderCloseArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3311,7 +10258,7 @@ func (r *reader) decodeOAContentReaderCloseArguments() (*OAContentReaderCloseArg
 	return v, nil
 }
 
-func (r *reader) decodeOAContentWriterBeginArguments() (*OAContentWriterBeginArguments, error) {
+func (r *reader) decodeOAContentWriterBeginArguments() (*oaContentWriterBeginArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3319,7 +10266,7 @@ func (r *reader) decodeOAContentWriterBeginArguments() (*OAContentWriterBeginArg
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentWriterBeginArguments{}
+	v := &oaContentWriterBeginArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3390,7 +10337,7 @@ func (r *reader) decodeOAContentWriterBeginArguments() (*OAContentWriterBeginArg
 	return v, nil
 }
 
-func (r *reader) decodeOAContentWriterAppendArguments() (*OAContentWriterAppendArguments, error) {
+func (r *reader) decodeOAContentWriterAppendArguments() (*oaContentWriterAppendArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3398,7 +10345,7 @@ func (r *reader) decodeOAContentWriterAppendArguments() (*OAContentWriterAppendA
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentWriterAppendArguments{}
+	v := &oaContentWriterAppendArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3469,7 +10416,7 @@ func (r *reader) decodeOAContentWriterAppendArguments() (*OAContentWriterAppendA
 	return v, nil
 }
 
-func (r *reader) decodeOAContentWriterCommitArguments() (*OAContentWriterCommitArguments, error) {
+func (r *reader) decodeOAContentWriterCommitArguments() (*oaContentWriterCommitArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3477,7 +10424,7 @@ func (r *reader) decodeOAContentWriterCommitArguments() (*OAContentWriterCommitA
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentWriterCommitArguments{}
+	v := &oaContentWriterCommitArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3528,7 +10475,7 @@ func (r *reader) decodeOAContentWriterCommitArguments() (*OAContentWriterCommitA
 	return v, nil
 }
 
-func (r *reader) decodeOAContentWriterAbortArguments() (*OAContentWriterAbortArguments, error) {
+func (r *reader) decodeOAContentWriterAbortArguments() (*oaContentWriterAbortArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3536,7 +10483,7 @@ func (r *reader) decodeOAContentWriterAbortArguments() (*OAContentWriterAbortArg
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentWriterAbortArguments{}
+	v := &oaContentWriterAbortArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3587,7 +10534,7 @@ func (r *reader) decodeOAContentWriterAbortArguments() (*OAContentWriterAbortArg
 	return v, nil
 }
 
-func (r *reader) decodeOAContentChangesObserveArguments() (*OAContentChangesObserveArguments, error) {
+func (r *reader) decodeOAContentChangesObserveArguments() (*oaContentChangesObserveArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3595,7 +10542,7 @@ func (r *reader) decodeOAContentChangesObserveArguments() (*OAContentChangesObse
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentChangesObserveArguments{}
+	v := &oaContentChangesObserveArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3666,7 +10613,7 @@ func (r *reader) decodeOAContentChangesObserveArguments() (*OAContentChangesObse
 	return v, nil
 }
 
-func (r *reader) decodeOAContentChangesListArguments() (*OAContentChangesListArguments, error) {
+func (r *reader) decodeOAContentChangesListArguments() (*oaContentChangesListArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3674,7 +10621,7 @@ func (r *reader) decodeOAContentChangesListArguments() (*OAContentChangesListArg
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentChangesListArguments{}
+	v := &oaContentChangesListArguments{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3735,7 +10682,7 @@ func (r *reader) decodeOAContentChangesListArguments() (*OAContentChangesListArg
 	return v, nil
 }
 
-func (r *reader) decodeOAServiceFrame() (*OAServiceFrame, error) {
+func (r *reader) decodeOAHoldsHoldArguments() (*oaHoldsHoldArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3743,7 +10690,986 @@ func (r *reader) decodeOAServiceFrame() (*OAServiceFrame, error) {
 		return nil, err
 	}
 	r.pos++
-	v := &OAServiceFrame{}
+	v := &oaHoldsHoldArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "request":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Request = x
+			case "target":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = x
+			case "purpose":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Purpose = x
+			case "lifetime":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseLifetime(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Lifetime = word
+			case "lease_ms":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.LeaseMs = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&31 != 31 {
+		return nil, r.refuse("missing_field")
+	}
+	if !(v.Lifetime).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAHoldsReleaseArguments() (*oaHoldsReleaseArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaHoldsReleaseArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "hold":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Hold = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAHoldsRenewArguments() (*oaHoldsRenewArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaHoldsRenewArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "hold":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Hold = x
+			case "lease_ms":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.LeaseMs = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAManifestsDescribeArguments() (*oaManifestsDescribeArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaManifestsDescribeArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "id":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.ID = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAManifestsPublishArguments() (*oaManifestsPublishArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaManifestsPublishArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "request":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Request = x
+			case "manifest":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.decodeManifest()
+				if err != nil {
+					return nil, err
+				}
+				v.Manifest = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryListArguments() (*oaInventoryListArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryListArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "continuation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Continuation = x
+			case "limit":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Limit = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryHoldersArguments() (*oaInventoryHoldersArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryHoldersArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryUnheldArguments() (*oaInventoryUnheldArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryUnheldArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "continuation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Continuation = x
+			case "limit":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Limit = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryFindArguments() (*oaInventoryFindArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryFindArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "digest":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Digest = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentRemoverRemoveArguments() (*oaContentRemoverRemoveArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaContentRemoverRemoveArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceDescribeArguments() (*oaInventorySourceDescribeArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceDescribeArguments{}
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			_ = key
+			return nil, r.refuse("unknown_field")
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceSnapshotArguments() (*oaInventorySourceSnapshotArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceSnapshotArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "continuation":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Continuation = x
+			case "limit":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Limit = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&3 != 3 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceObserveArguments() (*oaInventorySourceObserveArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceObserveArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "cursor":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Cursor = x
+			case "max_changes":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.MaxChanges = x
+			case "wait_ms":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.WaitMs = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceVerifyArguments() (*oaInventorySourceVerifyArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceVerifyArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceRemoveArguments() (*oaInventorySourceRemoveArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceRemoveArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "target":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Target = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAServiceFrame() (*oaServiceFrame, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaServiceFrame{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3824,7 +11750,7 @@ func (r *reader) decodeOAServiceFrame() (*OAServiceFrame, error) {
 	return v, nil
 }
 
-func (r *reader) decodeOAServiceReply() (*OAServiceReply, error) {
+func (r *reader) decodeOAServiceReply() (*oaServiceReply, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3832,7 +11758,7 @@ func (r *reader) decodeOAServiceReply() (*OAServiceReply, error) {
 		return nil, err
 	}
 	r.pos++
-	v := &OAServiceReply{}
+	v := &oaServiceReply{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3923,7 +11849,7 @@ func (r *reader) decodeOAServiceReply() (*OAServiceReply, error) {
 	return v, nil
 }
 
-func (r *reader) decodeOAServiceError() (*OAServiceError, error) {
+func (r *reader) decodeOAServiceError() (*oaServiceError, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -3931,7 +11857,7 @@ func (r *reader) decodeOAServiceError() (*OAServiceError, error) {
 		return nil, err
 	}
 	r.pos++
-	v := &OAServiceError{}
+	v := &oaServiceError{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -3992,7 +11918,7 @@ func (r *reader) decodeOAServiceError() (*OAServiceError, error) {
 	return v, nil
 }
 
-func (r *reader) decodeOAContentReaderOpenResult() (*OAContentReaderOpenResult, error) {
+func (r *reader) decodeOAContentReaderOpenResult() (*oaContentReaderOpenResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4000,7 +11926,7 @@ func (r *reader) decodeOAContentReaderOpenResult() (*OAContentReaderOpenResult, 
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentReaderOpenResult{}
+	v := &oaContentReaderOpenResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4051,7 +11977,7 @@ func (r *reader) decodeOAContentReaderOpenResult() (*OAContentReaderOpenResult, 
 	return v, nil
 }
 
-func (r *reader) decodeOAContentReaderReadResult() (*OAContentReaderReadResult, error) {
+func (r *reader) decodeOAContentReaderReadResult() (*oaContentReaderReadResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4059,7 +11985,7 @@ func (r *reader) decodeOAContentReaderReadResult() (*OAContentReaderReadResult, 
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentReaderReadResult{}
+	v := &oaContentReaderReadResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4110,7 +12036,7 @@ func (r *reader) decodeOAContentReaderReadResult() (*OAContentReaderReadResult, 
 	return v, nil
 }
 
-func (r *reader) decodeOAContentReaderCloseResult() (*OAContentReaderCloseResult, error) {
+func (r *reader) decodeOAContentReaderCloseResult() (*oaContentReaderCloseResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4118,7 +12044,7 @@ func (r *reader) decodeOAContentReaderCloseResult() (*OAContentReaderCloseResult
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentReaderCloseResult{}
+	v := &oaContentReaderCloseResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4169,7 +12095,7 @@ func (r *reader) decodeOAContentReaderCloseResult() (*OAContentReaderCloseResult
 	return v, nil
 }
 
-func (r *reader) decodeOAContentWriterBeginResult() (*OAContentWriterBeginResult, error) {
+func (r *reader) decodeOAContentWriterBeginResult() (*oaContentWriterBeginResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4177,7 +12103,7 @@ func (r *reader) decodeOAContentWriterBeginResult() (*OAContentWriterBeginResult
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentWriterBeginResult{}
+	v := &oaContentWriterBeginResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4228,7 +12154,7 @@ func (r *reader) decodeOAContentWriterBeginResult() (*OAContentWriterBeginResult
 	return v, nil
 }
 
-func (r *reader) decodeOAContentWriterAppendResult() (*OAContentWriterAppendResult, error) {
+func (r *reader) decodeOAContentWriterAppendResult() (*oaContentWriterAppendResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4236,7 +12162,7 @@ func (r *reader) decodeOAContentWriterAppendResult() (*OAContentWriterAppendResu
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentWriterAppendResult{}
+	v := &oaContentWriterAppendResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4287,7 +12213,7 @@ func (r *reader) decodeOAContentWriterAppendResult() (*OAContentWriterAppendResu
 	return v, nil
 }
 
-func (r *reader) decodeOAContentWriterCommitResult() (*OAContentWriterCommitResult, error) {
+func (r *reader) decodeOAContentWriterCommitResult() (*oaContentWriterCommitResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4295,7 +12221,7 @@ func (r *reader) decodeOAContentWriterCommitResult() (*OAContentWriterCommitResu
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentWriterCommitResult{}
+	v := &oaContentWriterCommitResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4346,7 +12272,7 @@ func (r *reader) decodeOAContentWriterCommitResult() (*OAContentWriterCommitResu
 	return v, nil
 }
 
-func (r *reader) decodeOAContentWriterAbortResult() (*OAContentWriterAbortResult, error) {
+func (r *reader) decodeOAContentWriterAbortResult() (*oaContentWriterAbortResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4354,7 +12280,7 @@ func (r *reader) decodeOAContentWriterAbortResult() (*OAContentWriterAbortResult
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentWriterAbortResult{}
+	v := &oaContentWriterAbortResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4405,7 +12331,7 @@ func (r *reader) decodeOAContentWriterAbortResult() (*OAContentWriterAbortResult
 	return v, nil
 }
 
-func (r *reader) decodeOAContentChangesObserveResult() (*OAContentChangesObserveResult, error) {
+func (r *reader) decodeOAContentChangesObserveResult() (*oaContentChangesObserveResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4413,7 +12339,7 @@ func (r *reader) decodeOAContentChangesObserveResult() (*OAContentChangesObserve
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentChangesObserveResult{}
+	v := &oaContentChangesObserveResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4464,7 +12390,7 @@ func (r *reader) decodeOAContentChangesObserveResult() (*OAContentChangesObserve
 	return v, nil
 }
 
-func (r *reader) decodeOAContentChangesListResult() (*OAContentChangesListResult, error) {
+func (r *reader) decodeOAContentChangesListResult() (*oaContentChangesListResult, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
 	}
@@ -4472,7 +12398,7 @@ func (r *reader) decodeOAContentChangesListResult() (*OAContentChangesListResult
 		return nil, err
 	}
 	r.pos++
-	v := &OAContentChangesListResult{}
+	v := &oaContentChangesListResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -4523,6 +12449,891 @@ func (r *reader) decodeOAContentChangesListResult() (*OAContentChangesListResult
 	return v, nil
 }
 
+func (r *reader) decodeOAHoldsHoldResult() (*oaHoldsHoldResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaHoldsHoldResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeHoldResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAHoldsReleaseResult() (*oaHoldsReleaseResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaHoldsReleaseResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeReleaseResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAHoldsRenewResult() (*oaHoldsRenewResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaHoldsRenewResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeRenewResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAManifestsDescribeResult() (*oaManifestsDescribeResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaManifestsDescribeResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeDescribeResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAManifestsPublishResult() (*oaManifestsPublishResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaManifestsPublishResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodePublishResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryListResult() (*oaInventoryListResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryListResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeInventoryPage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryHoldersResult() (*oaInventoryHoldersResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryHoldersResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeInventoryPage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryUnheldResult() (*oaInventoryUnheldResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryUnheldResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeInventoryPage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryFindResult() (*oaInventoryFindResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryFindResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeInventoryPage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAContentRemoverRemoveResult() (*oaContentRemoverRemoveResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaContentRemoverRemoveResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeRemoveResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceDescribeResult() (*oaInventorySourceDescribeResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceDescribeResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeSourceDescription()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceSnapshotResult() (*oaInventorySourceSnapshotResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceSnapshotResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeSourcePage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceObserveResult() (*oaInventorySourceObserveResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceObserveResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeSourcePage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceVerifyResult() (*oaInventorySourceVerifyResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceVerifyResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeSourcePage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventorySourceRemoveResult() (*oaInventorySourceRemoveResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventorySourceRemoveResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeRemoveResult()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func Decode(in []byte) (*OpenResult, error) {
 	r := &reader{buf: in}
 	r.ws()
@@ -4537,12 +13348,12 @@ func Decode(in []byte) (*OpenResult, error) {
 	return v, nil
 }
 
-// Refusals is in the order two of them are chosen between.
+// refusals is in the order two of them are chosen between.
 
-var Refusals = []string{"malformed", "bad_string", "number_spelling", "wrong_type", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "bad_binary", "bad_enum", "trailing_bytes"}
+var refusals = []string{"malformed", "bad_string", "number_spelling", "wrong_type", "bad_timestamp", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "bad_binary", "bad_enum", "trailing_bytes"}
 
-func RefusalRank(word string) int {
-	for i, w := range Refusals {
+func refusalRank(word string) int {
+	for i, w := range refusals {
 		if w == word {
 			return i
 		}
@@ -4629,11 +13440,11 @@ func (r *reader) binary() ([]byte, error) {
 }
 
 // A transport consumes or copies frames before returning. WriteFrame is one-way.
-type FrameWriter interface{ WriteFrame([]byte) error }
+type FrameWriter interface{ WriteFrame(frame []byte) error }
 type DispatchError string
 
 func (e DispatchError) Error() string { return string(e) }
-func servicePayload(frame []byte) (*OAServiceFrame, error) {
+func servicePayload(frame []byte) (*oaServiceFrame, error) {
 	r := &reader{buf: frame}
 	r.ws()
 	v, err := r.decodeOAServiceFrame()
@@ -4662,9 +13473,14 @@ func ServiceName(frame []byte) (string, error) {
 
 // ExchangeFrame returns the response associated with this call. Correlation,
 // serialization and deadlines belong to the transport, not this codec.
-type FrameExchanger interface{ ExchangeFrame([]byte) ([]byte, error) }
+type FrameExchanger interface {
+	ExchangeFrame(frame []byte) ([]byte, error)
+}
+
+// ServiceError is a reply on the error channel. Code is a ServiceErrorCode
+// constant or a word this package has never heard.
 type ServiceError struct {
-	Code    string
+	Code    ServiceErrorCode
 	Message string
 }
 
@@ -4672,7 +13488,7 @@ func (e *ServiceError) Error() string {
 	if e.Message != "" {
 		return e.Message
 	}
-	return e.Code
+	return string(e.Code)
 }
 func serviceResponse(frame []byte, service, method string) (Raw, error) {
 	r := &reader{buf: frame}
@@ -4705,11 +13521,11 @@ func serviceResponse(frame []byte, service, method string) (Raw, error) {
 		if e.Code == "" {
 			return "", DispatchError("invalid_error")
 		}
-		return "", &ServiceError{Code: e.Code, Message: e.Message}
+		return "", &ServiceError{Code: ServiceErrorCode(e.Code), Message: e.Message}
 	}
 	return v.Payload, nil
 }
-func serviceReply(v *OAServiceFrame, payload Raw, err error) (frame []byte, outErr error) {
+func serviceReply(v *oaServiceFrame, payload Raw, err error) (frame []byte, outErr error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -4720,13 +13536,13 @@ func serviceReply(v *OAServiceFrame, payload Raw, err error) (frame []byte, outE
 			}
 		}
 	}()
-	reply := OAServiceReply{Version: 1, Service: v.Service, Method: v.Method, Ok: err == nil, Payload: payload}
+	reply := oaServiceReply{Version: 1, Service: v.Service, Method: v.Method, Ok: err == nil, Payload: payload}
 	if err != nil {
-		e := OAServiceError{Code: "handler_error", Message: "handler failed"}
+		e := oaServiceError{Code: string(ServiceErrorCodeHandlerError), Message: "handler failed"}
 		switch x := err.(type) {
 		case *ServiceError:
 			if x.Code != "" {
-				e.Code = x.Code
+				e.Code = string(x.Code)
 			}
 			e.Message = x.Message
 		case DispatchError:
@@ -4748,10 +13564,108 @@ func serviceReply(v *OAServiceFrame, payload Raw, err error) (frame []byte, outE
 	return frame, nil
 }
 
+// EndpointContract is abstraction.facade/endpoint@1, which every dispatcher
+// answers beside its own service.
+const EndpointContract = "abstraction.facade/endpoint@1"
+
+// DescribedService is a dispatcher of any generated package, as
+// abstraction.facade/endpoint@1 Describe lists it.
+type DescribedService interface {
+	DescribeService() (contract string, ready bool, why string)
+}
+
+// DescribeEndpoint answers an abstraction.facade/endpoint@1 Describe frame for
+// an endpoint hosting services, in that order. program and version are the
+// provider's own display name and version, never authority. A frame for another
+// service reads unknown_service.
+func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service != EndpointContract {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	if v.Method != "Describe" {
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+	r := &reader{buf: []byte(v.Arguments)}
+	r.ws()
+	empty := false
+	if r.pos < len(r.buf) && r.buf[r.pos] == '{' {
+		r.pos++
+		r.ws()
+		if r.pos < len(r.buf) && r.buf[r.pos] == '}' {
+			r.pos++
+			r.ws()
+			empty = r.pos == len(r.buf)
+		}
+	}
+	if !empty {
+		return serviceReply(v, "", &Refusal{Word: "unknown_field"})
+	}
+	out := append([]byte(nil), "{\"value\":{\"outcome\":\"described\",\"program\":"...)
+	out = esc(out, program)
+	out = append(out, ",\"version\":"...)
+	out = esc(out, version)
+	out = append(out, ",\"services\":["...)
+	for i, service := range services {
+		contract, ready, why := service.DescribeService()
+		readiness := "ready"
+		if !ready {
+			readiness = "not_ready"
+		}
+		if i > 0 {
+			out = append(out, ',')
+		}
+		out = append(out, "{\"contract\":"...)
+		out = esc(out, contract)
+		out = append(out, ",\"readiness\":\""+readiness+"\",\"why\":"...)
+		out = esc(out, why)
+		out = append(out, ",\"guarantees\":[],\"capabilities\":{}}"...)
+	}
+	return serviceReply(v, Raw(append(out, "]}}"...)), nil)
+}
+
+// ServedService is a dispatcher of any generated package that ServeEndpoint
+// routes frames to by its wire name.
+type ServedService interface {
+	DescribedService
+	ServiceContract() string
+}
+
+// ServeEndpoint answers one request-response frame for an endpoint hosting
+// services. A Describe frame lists all of them in the order given; any other
+// frame goes to the service it names. A service that takes only one-way frames
+// reads wrong_mode, and a frame naming none of them reads unknown_service.
+func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		described := make([]DescribedService, len(services))
+		for i, service := range services {
+			described[i] = service
+		}
+		return DescribeEndpoint(frame, program, version, described...)
+	}
+	for _, service := range services {
+		if service.ServiceContract() != v.Service {
+			continue
+		}
+		if exchanger, ok := service.(interface{ ExchangeFrame([]byte) ([]byte, error) }); ok {
+			return exchanger.ExchangeFrame(frame)
+		}
+		return serviceReply(v, "", DispatchError("wrong_mode"))
+	}
+	return serviceReply(v, "", DispatchError("unknown_service"))
+}
+
 type ContentReader interface {
-	Open(string) (OpenResult, error)
-	Read(string, int64, int64) (ReadResult, error)
-	Close(string) (CloseResult, error)
+	Open(digest string) (OpenResult, error)
+	Read(handle string, offset, maxBytes int64) (ReadResult, error)
+	Close(handle string) (CloseResult, error)
 }
 type ContentReaderTransport interface {
 	FrameExchanger
@@ -4764,7 +13678,7 @@ func NewContentReaderClient(t ContentReaderTransport) *ContentReaderClient {
 
 type ContentReaderDispatcher struct{ Handler ContentReader }
 
-func (c *ContentReaderClient) Open(arg0 string) (result OpenResult, err error) {
+func (c *ContentReaderClient) Open(digest string) (result OpenResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -4774,8 +13688,8 @@ func (c *ContentReaderClient) Open(arg0 string) (result OpenResult, err error) {
 			}
 		}
 	}()
-	args := OAContentReaderOpenArguments{Digest: arg0}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-reader@1", Method: "Open", Arguments: Raw(encOAContentReaderOpenArguments(nil, &args, 1))}
+	args := oaContentReaderOpenArguments{Digest: digest}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-reader@1", Method: "Open", Arguments: Raw(encOAContentReaderOpenArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -4792,7 +13706,7 @@ func (c *ContentReaderClient) Open(arg0 string) (result OpenResult, err error) {
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentReaderOpenResult
+	var decoded *oaContentReaderOpenResult
 	decoded, err = r.decodeOAContentReaderOpenResult()
 	if err != nil {
 		return
@@ -4806,7 +13720,7 @@ func (c *ContentReaderClient) Open(arg0 string) (result OpenResult, err error) {
 	result = decoded.Value
 	return
 }
-func (c *ContentReaderClient) Read(arg0 string, arg1 int64, arg2 int64) (result ReadResult, err error) {
+func (c *ContentReaderClient) Read(handle string, offset, maxBytes int64) (result ReadResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -4816,8 +13730,8 @@ func (c *ContentReaderClient) Read(arg0 string, arg1 int64, arg2 int64) (result 
 			}
 		}
 	}()
-	args := OAContentReaderReadArguments{Handle: arg0, Offset: arg1, MaxBytes: arg2}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-reader@1", Method: "Read", Arguments: Raw(encOAContentReaderReadArguments(nil, &args, 1))}
+	args := oaContentReaderReadArguments{Handle: handle, Offset: offset, MaxBytes: maxBytes}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-reader@1", Method: "Read", Arguments: Raw(encOAContentReaderReadArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -4834,7 +13748,7 @@ func (c *ContentReaderClient) Read(arg0 string, arg1 int64, arg2 int64) (result 
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentReaderReadResult
+	var decoded *oaContentReaderReadResult
 	decoded, err = r.decodeOAContentReaderReadResult()
 	if err != nil {
 		return
@@ -4848,7 +13762,7 @@ func (c *ContentReaderClient) Read(arg0 string, arg1 int64, arg2 int64) (result 
 	result = decoded.Value
 	return
 }
-func (c *ContentReaderClient) Close(arg0 string) (result CloseResult, err error) {
+func (c *ContentReaderClient) Close(handle string) (result CloseResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -4858,8 +13772,8 @@ func (c *ContentReaderClient) Close(arg0 string) (result CloseResult, err error)
 			}
 		}
 	}()
-	args := OAContentReaderCloseArguments{Handle: arg0}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-reader@1", Method: "Close", Arguments: Raw(encOAContentReaderCloseArguments(nil, &args, 1))}
+	args := oaContentReaderCloseArguments{Handle: handle}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-reader@1", Method: "Close", Arguments: Raw(encOAContentReaderCloseArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -4876,7 +13790,7 @@ func (c *ContentReaderClient) Close(arg0 string) (result CloseResult, err error)
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentReaderCloseResult
+	var decoded *oaContentReaderCloseResult
 	decoded, err = r.decodeOAContentReaderCloseResult()
 	if err != nil {
 		return
@@ -4889,6 +13803,23 @@ func (c *ContentReaderClient) Close(arg0 string) (result CloseResult, err error)
 	}
 	result = decoded.Value
 	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *ContentReaderDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.storage/content-reader@1", ready, why
+	}
+	return "abstraction.storage/content-reader@1", true, ""
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *ContentReaderDispatcher) ServiceContract() string {
+	return "abstraction.storage/content-reader@1"
 }
 func (d *ContentReaderDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
@@ -4913,6 +13844,9 @@ func (d *ContentReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 	v, err := servicePayload(frame)
 	if err != nil {
 		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/content-reader@1" {
 		return serviceReply(v, "", DispatchError("unknown_service"))
@@ -4961,14 +13895,14 @@ func (d *ContentReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return serviceReply(v, "", DispatchError("unknown_method"))
 	}
 }
-func (d *ContentReaderDispatcher) invokeOpen(args *OAContentReaderOpenArguments) (payload Raw, err error) {
+func (d *ContentReaderDispatcher) invokeOpen(args *oaContentReaderOpenArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -4977,30 +13911,30 @@ func (d *ContentReaderDispatcher) invokeOpen(args *OAContentReaderOpenArguments)
 	if err != nil {
 		return
 	}
-	value := OAContentReaderOpenResult{Value: result}
+	value := oaContentReaderOpenResult{Value: result}
 	payload = Raw(encOAContentReaderOpenResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentReaderOpenResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
-func (d *ContentReaderDispatcher) invokeRead(args *OAContentReaderReadArguments) (payload Raw, err error) {
+func (d *ContentReaderDispatcher) invokeRead(args *oaContentReaderReadArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -5009,30 +13943,30 @@ func (d *ContentReaderDispatcher) invokeRead(args *OAContentReaderReadArguments)
 	if err != nil {
 		return
 	}
-	value := OAContentReaderReadResult{Value: result}
+	value := oaContentReaderReadResult{Value: result}
 	payload = Raw(encOAContentReaderReadResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentReaderReadResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
-func (d *ContentReaderDispatcher) invokeClose(args *OAContentReaderCloseArguments) (payload Raw, err error) {
+func (d *ContentReaderDispatcher) invokeClose(args *oaContentReaderCloseArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -5041,28 +13975,28 @@ func (d *ContentReaderDispatcher) invokeClose(args *OAContentReaderCloseArgument
 	if err != nil {
 		return
 	}
-	value := OAContentReaderCloseResult{Value: result}
+	value := oaContentReaderCloseResult{Value: result}
 	payload = Raw(encOAContentReaderCloseResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentReaderCloseResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
 
 type ContentWriter interface {
-	Begin(string, string, int64) (BeginResult, error)
-	Append(string, int64, []byte) (AppendResult, error)
-	Commit(string) (CommitResult, error)
-	Abort(string) (AbortResult, error)
+	Begin(request, digest string, size int64) (BeginResult, error)
+	Append(handle string, offset int64, data []byte) (AppendResult, error)
+	Commit(handle string) (CommitResult, error)
+	Abort(handle string) (AbortResult, error)
 }
 type ContentWriterTransport interface {
 	FrameExchanger
@@ -5075,7 +14009,7 @@ func NewContentWriterClient(t ContentWriterTransport) *ContentWriterClient {
 
 type ContentWriterDispatcher struct{ Handler ContentWriter }
 
-func (c *ContentWriterClient) Begin(arg0 string, arg1 string, arg2 int64) (result BeginResult, err error) {
+func (c *ContentWriterClient) Begin(request, digest string, size int64) (result BeginResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -5085,8 +14019,8 @@ func (c *ContentWriterClient) Begin(arg0 string, arg1 string, arg2 int64) (resul
 			}
 		}
 	}()
-	args := OAContentWriterBeginArguments{Request: arg0, Digest: arg1, Size: arg2}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Begin", Arguments: Raw(encOAContentWriterBeginArguments(nil, &args, 1))}
+	args := oaContentWriterBeginArguments{Request: request, Digest: digest, Size: size}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Begin", Arguments: Raw(encOAContentWriterBeginArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -5103,7 +14037,7 @@ func (c *ContentWriterClient) Begin(arg0 string, arg1 string, arg2 int64) (resul
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentWriterBeginResult
+	var decoded *oaContentWriterBeginResult
 	decoded, err = r.decodeOAContentWriterBeginResult()
 	if err != nil {
 		return
@@ -5117,7 +14051,7 @@ func (c *ContentWriterClient) Begin(arg0 string, arg1 string, arg2 int64) (resul
 	result = decoded.Value
 	return
 }
-func (c *ContentWriterClient) Append(arg0 string, arg1 int64, arg2 []byte) (result AppendResult, err error) {
+func (c *ContentWriterClient) Append(handle string, offset int64, data []byte) (result AppendResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -5127,8 +14061,8 @@ func (c *ContentWriterClient) Append(arg0 string, arg1 int64, arg2 []byte) (resu
 			}
 		}
 	}()
-	args := OAContentWriterAppendArguments{Handle: arg0, Offset: arg1, Data: arg2}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Append", Arguments: Raw(encOAContentWriterAppendArguments(nil, &args, 1))}
+	args := oaContentWriterAppendArguments{Handle: handle, Offset: offset, Data: data}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Append", Arguments: Raw(encOAContentWriterAppendArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -5145,7 +14079,7 @@ func (c *ContentWriterClient) Append(arg0 string, arg1 int64, arg2 []byte) (resu
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentWriterAppendResult
+	var decoded *oaContentWriterAppendResult
 	decoded, err = r.decodeOAContentWriterAppendResult()
 	if err != nil {
 		return
@@ -5159,7 +14093,7 @@ func (c *ContentWriterClient) Append(arg0 string, arg1 int64, arg2 []byte) (resu
 	result = decoded.Value
 	return
 }
-func (c *ContentWriterClient) Commit(arg0 string) (result CommitResult, err error) {
+func (c *ContentWriterClient) Commit(handle string) (result CommitResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -5169,8 +14103,8 @@ func (c *ContentWriterClient) Commit(arg0 string) (result CommitResult, err erro
 			}
 		}
 	}()
-	args := OAContentWriterCommitArguments{Handle: arg0}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Commit", Arguments: Raw(encOAContentWriterCommitArguments(nil, &args, 1))}
+	args := oaContentWriterCommitArguments{Handle: handle}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Commit", Arguments: Raw(encOAContentWriterCommitArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -5187,7 +14121,7 @@ func (c *ContentWriterClient) Commit(arg0 string) (result CommitResult, err erro
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentWriterCommitResult
+	var decoded *oaContentWriterCommitResult
 	decoded, err = r.decodeOAContentWriterCommitResult()
 	if err != nil {
 		return
@@ -5201,7 +14135,7 @@ func (c *ContentWriterClient) Commit(arg0 string) (result CommitResult, err erro
 	result = decoded.Value
 	return
 }
-func (c *ContentWriterClient) Abort(arg0 string) (result AbortResult, err error) {
+func (c *ContentWriterClient) Abort(handle string) (result AbortResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -5211,8 +14145,8 @@ func (c *ContentWriterClient) Abort(arg0 string) (result AbortResult, err error)
 			}
 		}
 	}()
-	args := OAContentWriterAbortArguments{Handle: arg0}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Abort", Arguments: Raw(encOAContentWriterAbortArguments(nil, &args, 1))}
+	args := oaContentWriterAbortArguments{Handle: handle}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-writer@1", Method: "Abort", Arguments: Raw(encOAContentWriterAbortArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -5229,7 +14163,7 @@ func (c *ContentWriterClient) Abort(arg0 string) (result AbortResult, err error)
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentWriterAbortResult
+	var decoded *oaContentWriterAbortResult
 	decoded, err = r.decodeOAContentWriterAbortResult()
 	if err != nil {
 		return
@@ -5242,6 +14176,23 @@ func (c *ContentWriterClient) Abort(arg0 string) (result AbortResult, err error)
 	}
 	result = decoded.Value
 	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *ContentWriterDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.storage/content-writer@1", ready, why
+	}
+	return "abstraction.storage/content-writer@1", true, ""
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *ContentWriterDispatcher) ServiceContract() string {
+	return "abstraction.storage/content-writer@1"
 }
 func (d *ContentWriterDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
@@ -5268,6 +14219,9 @@ func (d *ContentWriterDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 	v, err := servicePayload(frame)
 	if err != nil {
 		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/content-writer@1" {
 		return serviceReply(v, "", DispatchError("unknown_service"))
@@ -5329,14 +14283,14 @@ func (d *ContentWriterDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return serviceReply(v, "", DispatchError("unknown_method"))
 	}
 }
-func (d *ContentWriterDispatcher) invokeBegin(args *OAContentWriterBeginArguments) (payload Raw, err error) {
+func (d *ContentWriterDispatcher) invokeBegin(args *oaContentWriterBeginArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -5345,30 +14299,30 @@ func (d *ContentWriterDispatcher) invokeBegin(args *OAContentWriterBeginArgument
 	if err != nil {
 		return
 	}
-	value := OAContentWriterBeginResult{Value: result}
+	value := oaContentWriterBeginResult{Value: result}
 	payload = Raw(encOAContentWriterBeginResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentWriterBeginResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
-func (d *ContentWriterDispatcher) invokeAppend(args *OAContentWriterAppendArguments) (payload Raw, err error) {
+func (d *ContentWriterDispatcher) invokeAppend(args *oaContentWriterAppendArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -5377,30 +14331,30 @@ func (d *ContentWriterDispatcher) invokeAppend(args *OAContentWriterAppendArgume
 	if err != nil {
 		return
 	}
-	value := OAContentWriterAppendResult{Value: result}
+	value := oaContentWriterAppendResult{Value: result}
 	payload = Raw(encOAContentWriterAppendResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentWriterAppendResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
-func (d *ContentWriterDispatcher) invokeCommit(args *OAContentWriterCommitArguments) (payload Raw, err error) {
+func (d *ContentWriterDispatcher) invokeCommit(args *oaContentWriterCommitArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -5409,30 +14363,30 @@ func (d *ContentWriterDispatcher) invokeCommit(args *OAContentWriterCommitArgume
 	if err != nil {
 		return
 	}
-	value := OAContentWriterCommitResult{Value: result}
+	value := oaContentWriterCommitResult{Value: result}
 	payload = Raw(encOAContentWriterCommitResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentWriterCommitResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
-func (d *ContentWriterDispatcher) invokeAbort(args *OAContentWriterAbortArguments) (payload Raw, err error) {
+func (d *ContentWriterDispatcher) invokeAbort(args *oaContentWriterAbortArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -5441,26 +14395,26 @@ func (d *ContentWriterDispatcher) invokeAbort(args *OAContentWriterAbortArgument
 	if err != nil {
 		return
 	}
-	value := OAContentWriterAbortResult{Value: result}
+	value := oaContentWriterAbortResult{Value: result}
 	payload = Raw(encOAContentWriterAbortResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentWriterAbortResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
 
 type ContentChanges interface {
-	Observe(string, int64, int64) (ChangePage, error)
-	List(string, int64) (ListingPage, error)
+	Observe(cursor string, maxChanges, waitMs int64) (ChangePage, error)
+	List(continuation string, limit int64) (ListingPage, error)
 }
 type ContentChangesTransport interface {
 	FrameExchanger
@@ -5473,7 +14427,7 @@ func NewContentChangesClient(t ContentChangesTransport) *ContentChangesClient {
 
 type ContentChangesDispatcher struct{ Handler ContentChanges }
 
-func (c *ContentChangesClient) Observe(arg0 string, arg1 int64, arg2 int64) (result ChangePage, err error) {
+func (c *ContentChangesClient) Observe(cursor string, maxChanges, waitMs int64) (result ChangePage, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -5483,8 +14437,8 @@ func (c *ContentChangesClient) Observe(arg0 string, arg1 int64, arg2 int64) (res
 			}
 		}
 	}()
-	args := OAContentChangesObserveArguments{Cursor: arg0, MaxChanges: arg1, WaitMs: arg2}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-changes@1", Method: "Observe", Arguments: Raw(encOAContentChangesObserveArguments(nil, &args, 1))}
+	args := oaContentChangesObserveArguments{Cursor: cursor, MaxChanges: maxChanges, WaitMs: waitMs}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-changes@1", Method: "Observe", Arguments: Raw(encOAContentChangesObserveArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -5501,7 +14455,7 @@ func (c *ContentChangesClient) Observe(arg0 string, arg1 int64, arg2 int64) (res
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentChangesObserveResult
+	var decoded *oaContentChangesObserveResult
 	decoded, err = r.decodeOAContentChangesObserveResult()
 	if err != nil {
 		return
@@ -5515,7 +14469,7 @@ func (c *ContentChangesClient) Observe(arg0 string, arg1 int64, arg2 int64) (res
 	result = decoded.Value
 	return
 }
-func (c *ContentChangesClient) List(arg0 string, arg1 int64) (result ListingPage, err error) {
+func (c *ContentChangesClient) List(continuation string, limit int64) (result ListingPage, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if e, ok := p.(*Refusal); ok {
@@ -5525,8 +14479,8 @@ func (c *ContentChangesClient) List(arg0 string, arg1 int64) (result ListingPage
 			}
 		}
 	}()
-	args := OAContentChangesListArguments{Continuation: arg0, Limit: arg1}
-	v := OAServiceFrame{Version: 1, Service: "abstraction.storage/content-changes@1", Method: "List", Arguments: Raw(encOAContentChangesListArguments(nil, &args, 1))}
+	args := oaContentChangesListArguments{Continuation: continuation, Limit: limit}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-changes@1", Method: "List", Arguments: Raw(encOAContentChangesListArguments(nil, &args, 1))}
 	frame := encOAServiceFrame(nil, &v, 0)
 	if _, err = servicePayload(frame); err != nil {
 		return
@@ -5543,7 +14497,7 @@ func (c *ContentChangesClient) List(arg0 string, arg1 int64) (result ListingPage
 	}
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
-	var decoded *OAContentChangesListResult
+	var decoded *oaContentChangesListResult
 	decoded, err = r.decodeOAContentChangesListResult()
 	if err != nil {
 		return
@@ -5556,6 +14510,23 @@ func (c *ContentChangesClient) List(arg0 string, arg1 int64) (result ListingPage
 	}
 	result = decoded.Value
 	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *ContentChangesDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.storage/content-changes@1", ready, why
+	}
+	return "abstraction.storage/content-changes@1", true, ""
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *ContentChangesDispatcher) ServiceContract() string {
+	return "abstraction.storage/content-changes@1"
 }
 func (d *ContentChangesDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
@@ -5578,6 +14549,9 @@ func (d *ContentChangesDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 	v, err := servicePayload(frame)
 	if err != nil {
 		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/content-changes@1" {
 		return serviceReply(v, "", DispatchError("unknown_service"))
@@ -5613,14 +14587,14 @@ func (d *ContentChangesDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return serviceReply(v, "", DispatchError("unknown_method"))
 	}
 }
-func (d *ContentChangesDispatcher) invokeObserve(args *OAContentChangesObserveArguments) (payload Raw, err error) {
+func (d *ContentChangesDispatcher) invokeObserve(args *oaContentChangesObserveArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -5629,30 +14603,30 @@ func (d *ContentChangesDispatcher) invokeObserve(args *OAContentChangesObserveAr
 	if err != nil {
 		return
 	}
-	value := OAContentChangesObserveResult{Value: result}
+	value := oaContentChangesObserveResult{Value: result}
 	payload = Raw(encOAContentChangesObserveResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentChangesObserveResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
-func (d *ContentChangesDispatcher) invokeList(args *OAContentChangesListArguments) (payload Raw, err error) {
+func (d *ContentChangesDispatcher) invokeList(args *oaContentChangesListArguments) (payload Raw, err error) {
 	defer func() {
 		if p := recover(); p != nil {
 			payload = ""
 			if _, ok := p.(*Refusal); ok {
-				err = &ServiceError{Code: "invalid_result"}
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 			} else {
-				err = &ServiceError{Code: "handler_error", Message: "handler failed"}
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
 			}
 		}
 	}()
@@ -5661,19 +14635,1844 @@ func (d *ContentChangesDispatcher) invokeList(args *OAContentChangesListArgument
 	if err != nil {
 		return
 	}
-	value := OAContentChangesListResult{Value: result}
+	value := oaContentChangesListResult{Value: result}
 	payload = Raw(encOAContentChangesListResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAContentChangesListResult(); e != nil {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	r.ws()
 	if r.pos != len(r.buf) {
 		payload = ""
-		err = &ServiceError{Code: "invalid_result"}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 	}
 	return
 }
+
+type Holds interface {
+	Hold(request, target, purpose string, lifetime Lifetime, leaseMs int64) (HoldResult, error)
+	Release(hold string) (ReleaseResult, error)
+	Renew(hold string, leaseMs int64) (RenewResult, error)
+}
+type HoldsTransport interface {
+	FrameExchanger
+}
+type HoldsClient struct{ transport HoldsTransport }
+
+func NewHoldsClient(t HoldsTransport) *HoldsClient { return &HoldsClient{transport: t} }
+
+type HoldsDispatcher struct{ Handler Holds }
+
+func (c *HoldsClient) Hold(request, target, purpose string, lifetime Lifetime, leaseMs int64) (result HoldResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaHoldsHoldArguments{Request: request, Target: target, Purpose: purpose, Lifetime: lifetime, LeaseMs: leaseMs}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/holds@1", Method: "Hold", Arguments: Raw(encOAHoldsHoldArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaHoldsHoldResult
+	decoded, err = r.decodeOAHoldsHoldResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *HoldsClient) Release(hold string) (result ReleaseResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaHoldsReleaseArguments{Hold: hold}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/holds@1", Method: "Release", Arguments: Raw(encOAHoldsReleaseArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaHoldsReleaseResult
+	decoded, err = r.decodeOAHoldsReleaseResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *HoldsClient) Renew(hold string, leaseMs int64) (result RenewResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaHoldsRenewArguments{Hold: hold, LeaseMs: leaseMs}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/holds@1", Method: "Renew", Arguments: Raw(encOAHoldsRenewArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaHoldsRenewResult
+	decoded, err = r.decodeOAHoldsRenewResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *HoldsDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.storage/holds@1", ready, why
+	}
+	return "abstraction.storage/holds@1", true, ""
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *HoldsDispatcher) ServiceContract() string { return "abstraction.storage/holds@1" }
+func (d *HoldsDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.storage/holds@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Hold":
+		return DispatchError("wrong_mode")
+	case "Release":
+		return DispatchError("wrong_mode")
+	case "Renew":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *HoldsDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.storage/holds@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Hold":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAHoldsHoldArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeHold(args)
+		return serviceReply(v, payload, err)
+	case "Release":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAHoldsReleaseArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeRelease(args)
+		return serviceReply(v, payload, err)
+	case "Renew":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAHoldsRenewArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeRenew(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *HoldsDispatcher) invokeHold(args *oaHoldsHoldArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result HoldResult
+	result, err = d.Handler.Hold(args.Request, args.Target, args.Purpose, args.Lifetime, args.LeaseMs)
+	if err != nil {
+		return
+	}
+	value := oaHoldsHoldResult{Value: result}
+	payload = Raw(encOAHoldsHoldResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAHoldsHoldResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *HoldsDispatcher) invokeRelease(args *oaHoldsReleaseArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result ReleaseResult
+	result, err = d.Handler.Release(args.Hold)
+	if err != nil {
+		return
+	}
+	value := oaHoldsReleaseResult{Value: result}
+	payload = Raw(encOAHoldsReleaseResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAHoldsReleaseResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *HoldsDispatcher) invokeRenew(args *oaHoldsRenewArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result RenewResult
+	result, err = d.Handler.Renew(args.Hold, args.LeaseMs)
+	if err != nil {
+		return
+	}
+	value := oaHoldsRenewResult{Value: result}
+	payload = Raw(encOAHoldsRenewResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAHoldsRenewResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+type Manifests interface {
+	Describe(id string) (DescribeResult, error)
+	Publish(request string, manifest Manifest) (PublishResult, error)
+}
+type ManifestsTransport interface {
+	FrameExchanger
+}
+type ManifestsClient struct{ transport ManifestsTransport }
+
+func NewManifestsClient(t ManifestsTransport) *ManifestsClient { return &ManifestsClient{transport: t} }
+
+type ManifestsDispatcher struct{ Handler Manifests }
+
+func (c *ManifestsClient) Describe(id string) (result DescribeResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaManifestsDescribeArguments{ID: id}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/manifests@1", Method: "Describe", Arguments: Raw(encOAManifestsDescribeArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaManifestsDescribeResult
+	decoded, err = r.decodeOAManifestsDescribeResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *ManifestsClient) Publish(request string, manifest Manifest) (result PublishResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaManifestsPublishArguments{Request: request, Manifest: manifest}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/manifests@1", Method: "Publish", Arguments: Raw(encOAManifestsPublishArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaManifestsPublishResult
+	decoded, err = r.decodeOAManifestsPublishResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *ManifestsDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.storage/manifests@1", ready, why
+	}
+	return "abstraction.storage/manifests@1", true, ""
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *ManifestsDispatcher) ServiceContract() string { return "abstraction.storage/manifests@1" }
+func (d *ManifestsDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.storage/manifests@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Describe":
+		return DispatchError("wrong_mode")
+	case "Publish":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *ManifestsDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.storage/manifests@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Describe":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAManifestsDescribeArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeDescribe(args)
+		return serviceReply(v, payload, err)
+	case "Publish":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAManifestsPublishArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokePublish(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *ManifestsDispatcher) invokeDescribe(args *oaManifestsDescribeArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result DescribeResult
+	result, err = d.Handler.Describe(args.ID)
+	if err != nil {
+		return
+	}
+	value := oaManifestsDescribeResult{Value: result}
+	payload = Raw(encOAManifestsDescribeResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAManifestsDescribeResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *ManifestsDispatcher) invokePublish(args *oaManifestsPublishArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result PublishResult
+	result, err = d.Handler.Publish(args.Request, args.Manifest)
+	if err != nil {
+		return
+	}
+	value := oaManifestsPublishResult{Value: result}
+	payload = Raw(encOAManifestsPublishResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAManifestsPublishResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+type Inventory interface {
+	List(continuation string, limit int64) (InventoryPage, error)
+	Holders(target string) (InventoryPage, error)
+	Unheld(continuation string, limit int64) (InventoryPage, error)
+	Find(digest string) (InventoryPage, error)
+}
+type InventoryTransport interface {
+	FrameExchanger
+}
+type InventoryClient struct{ transport InventoryTransport }
+
+func NewInventoryClient(t InventoryTransport) *InventoryClient { return &InventoryClient{transport: t} }
+
+type InventoryDispatcher struct{ Handler Inventory }
+
+func (c *InventoryClient) List(continuation string, limit int64) (result InventoryPage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventoryListArguments{Continuation: continuation, Limit: limit}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory@1", Method: "List", Arguments: Raw(encOAInventoryListArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventoryListResult
+	decoded, err = r.decodeOAInventoryListResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *InventoryClient) Holders(target string) (result InventoryPage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventoryHoldersArguments{Target: target}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory@1", Method: "Holders", Arguments: Raw(encOAInventoryHoldersArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventoryHoldersResult
+	decoded, err = r.decodeOAInventoryHoldersResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *InventoryClient) Unheld(continuation string, limit int64) (result InventoryPage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventoryUnheldArguments{Continuation: continuation, Limit: limit}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory@1", Method: "Unheld", Arguments: Raw(encOAInventoryUnheldArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventoryUnheldResult
+	decoded, err = r.decodeOAInventoryUnheldResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *InventoryClient) Find(digest string) (result InventoryPage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventoryFindArguments{Digest: digest}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory@1", Method: "Find", Arguments: Raw(encOAInventoryFindArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventoryFindResult
+	decoded, err = r.decodeOAInventoryFindResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *InventoryDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.storage/inventory@1", ready, why
+	}
+	return "abstraction.storage/inventory@1", true, ""
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *InventoryDispatcher) ServiceContract() string { return "abstraction.storage/inventory@1" }
+func (d *InventoryDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.storage/inventory@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "List":
+		return DispatchError("wrong_mode")
+	case "Holders":
+		return DispatchError("wrong_mode")
+	case "Unheld":
+		return DispatchError("wrong_mode")
+	case "Find":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *InventoryDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.storage/inventory@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "List":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventoryListArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeList(args)
+		return serviceReply(v, payload, err)
+	case "Holders":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventoryHoldersArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeHolders(args)
+		return serviceReply(v, payload, err)
+	case "Unheld":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventoryUnheldArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeUnheld(args)
+		return serviceReply(v, payload, err)
+	case "Find":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventoryFindArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeFind(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *InventoryDispatcher) invokeList(args *oaInventoryListArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result InventoryPage
+	result, err = d.Handler.List(args.Continuation, args.Limit)
+	if err != nil {
+		return
+	}
+	value := oaInventoryListResult{Value: result}
+	payload = Raw(encOAInventoryListResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventoryListResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *InventoryDispatcher) invokeHolders(args *oaInventoryHoldersArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result InventoryPage
+	result, err = d.Handler.Holders(args.Target)
+	if err != nil {
+		return
+	}
+	value := oaInventoryHoldersResult{Value: result}
+	payload = Raw(encOAInventoryHoldersResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventoryHoldersResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *InventoryDispatcher) invokeUnheld(args *oaInventoryUnheldArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result InventoryPage
+	result, err = d.Handler.Unheld(args.Continuation, args.Limit)
+	if err != nil {
+		return
+	}
+	value := oaInventoryUnheldResult{Value: result}
+	payload = Raw(encOAInventoryUnheldResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventoryUnheldResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *InventoryDispatcher) invokeFind(args *oaInventoryFindArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result InventoryPage
+	result, err = d.Handler.Find(args.Digest)
+	if err != nil {
+		return
+	}
+	value := oaInventoryFindResult{Value: result}
+	payload = Raw(encOAInventoryFindResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventoryFindResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+type ContentRemover interface {
+	Remove(target string) (RemoveResult, error)
+}
+type ContentRemoverTransport interface {
+	FrameExchanger
+}
+type ContentRemoverClient struct{ transport ContentRemoverTransport }
+
+func NewContentRemoverClient(t ContentRemoverTransport) *ContentRemoverClient {
+	return &ContentRemoverClient{transport: t}
+}
+
+type ContentRemoverDispatcher struct{ Handler ContentRemover }
+
+func (c *ContentRemoverClient) Remove(target string) (result RemoveResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaContentRemoverRemoveArguments{Target: target}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/content-remover@1", Method: "Remove", Arguments: Raw(encOAContentRemoverRemoveArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaContentRemoverRemoveResult
+	decoded, err = r.decodeOAContentRemoverRemoveResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *ContentRemoverDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.storage/content-remover@1", ready, why
+	}
+	return "abstraction.storage/content-remover@1", true, ""
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *ContentRemoverDispatcher) ServiceContract() string {
+	return "abstraction.storage/content-remover@1"
+}
+func (d *ContentRemoverDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.storage/content-remover@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Remove":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *ContentRemoverDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.storage/content-remover@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Remove":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAContentRemoverRemoveArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeRemove(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *ContentRemoverDispatcher) invokeRemove(args *oaContentRemoverRemoveArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result RemoveResult
+	result, err = d.Handler.Remove(args.Target)
+	if err != nil {
+		return
+	}
+	value := oaContentRemoverRemoveResult{Value: result}
+	payload = Raw(encOAContentRemoverRemoveResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAContentRemoverRemoveResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+type InventorySource interface {
+	Describe() (SourceDescription, error)
+	Snapshot(continuation string, limit int64) (SourcePage, error)
+	Observe(cursor string, maxChanges, waitMs int64) (SourcePage, error)
+	Verify(target string) (SourcePage, error)
+	Remove(target string) (RemoveResult, error)
+}
+type InventorySourceTransport interface {
+	FrameExchanger
+}
+type InventorySourceClient struct{ transport InventorySourceTransport }
+
+func NewInventorySourceClient(t InventorySourceTransport) *InventorySourceClient {
+	return &InventorySourceClient{transport: t}
+}
+
+type InventorySourceDispatcher struct{ Handler InventorySource }
+
+func (c *InventorySourceClient) Describe() (result SourceDescription, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventorySourceDescribeArguments{}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory-source@1", Method: "Describe", Arguments: Raw(encOAInventorySourceDescribeArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventorySourceDescribeResult
+	decoded, err = r.decodeOAInventorySourceDescribeResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *InventorySourceClient) Snapshot(continuation string, limit int64) (result SourcePage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventorySourceSnapshotArguments{Continuation: continuation, Limit: limit}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory-source@1", Method: "Snapshot", Arguments: Raw(encOAInventorySourceSnapshotArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventorySourceSnapshotResult
+	decoded, err = r.decodeOAInventorySourceSnapshotResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *InventorySourceClient) Observe(cursor string, maxChanges, waitMs int64) (result SourcePage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventorySourceObserveArguments{Cursor: cursor, MaxChanges: maxChanges, WaitMs: waitMs}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory-source@1", Method: "Observe", Arguments: Raw(encOAInventorySourceObserveArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventorySourceObserveResult
+	decoded, err = r.decodeOAInventorySourceObserveResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *InventorySourceClient) Verify(target string) (result SourcePage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventorySourceVerifyArguments{Target: target}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory-source@1", Method: "Verify", Arguments: Raw(encOAInventorySourceVerifyArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventorySourceVerifyResult
+	decoded, err = r.decodeOAInventorySourceVerifyResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *InventorySourceClient) Remove(target string) (result RemoveResult, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventorySourceRemoveArguments{Target: target}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory-source@1", Method: "Remove", Arguments: Raw(encOAInventorySourceRemoveArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventorySourceRemoveResult
+	decoded, err = r.decodeOAInventorySourceRemoveResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+
+// DescribeService is this dispatcher's service as abstraction.facade/endpoint@1 Describe lists it:
+// ready unless its handler implements Ready() (bool, string) and reports otherwise.
+func (d *InventorySourceDispatcher) DescribeService() (contract string, ready bool, why string) {
+	if h, ok := d.Handler.(interface{ Ready() (bool, string) }); ok {
+		if ready, why = h.Ready(); ready {
+			why = ""
+		}
+		return "abstraction.storage/inventory-source@1", ready, why
+	}
+	return "abstraction.storage/inventory-source@1", true, ""
+}
+
+// ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
+func (d *InventorySourceDispatcher) ServiceContract() string {
+	return "abstraction.storage/inventory-source@1"
+}
+func (d *InventorySourceDispatcher) WriteFrame(frame []byte) error {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return err
+	}
+	if v.Service != "abstraction.storage/inventory-source@1" {
+		return DispatchError("unknown_service")
+	}
+	switch v.Method {
+	case "Describe":
+		return DispatchError("wrong_mode")
+	case "Snapshot":
+		return DispatchError("wrong_mode")
+	case "Observe":
+		return DispatchError("wrong_mode")
+	case "Verify":
+		return DispatchError("wrong_mode")
+	case "Remove":
+		return DispatchError("wrong_mode")
+	default:
+		return DispatchError("unknown_method")
+	}
+}
+func (d *InventorySourceDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service != "abstraction.storage/inventory-source@1" {
+		return serviceReply(v, "", DispatchError("unknown_service"))
+	}
+	switch v.Method {
+	case "Describe":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventorySourceDescribeArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeDescribe(args)
+		return serviceReply(v, payload, err)
+	case "Snapshot":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventorySourceSnapshotArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeSnapshot(args)
+		return serviceReply(v, payload, err)
+	case "Observe":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventorySourceObserveArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeObserve(args)
+		return serviceReply(v, payload, err)
+	case "Verify":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventorySourceVerifyArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeVerify(args)
+		return serviceReply(v, payload, err)
+	case "Remove":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventorySourceRemoveArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeRemove(args)
+		return serviceReply(v, payload, err)
+	default:
+		return serviceReply(v, "", DispatchError("unknown_method"))
+	}
+}
+func (d *InventorySourceDispatcher) invokeDescribe(args *oaInventorySourceDescribeArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result SourceDescription
+	result, err = d.Handler.Describe()
+	if err != nil {
+		return
+	}
+	value := oaInventorySourceDescribeResult{Value: result}
+	payload = Raw(encOAInventorySourceDescribeResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventorySourceDescribeResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *InventorySourceDispatcher) invokeSnapshot(args *oaInventorySourceSnapshotArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result SourcePage
+	result, err = d.Handler.Snapshot(args.Continuation, args.Limit)
+	if err != nil {
+		return
+	}
+	value := oaInventorySourceSnapshotResult{Value: result}
+	payload = Raw(encOAInventorySourceSnapshotResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventorySourceSnapshotResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *InventorySourceDispatcher) invokeObserve(args *oaInventorySourceObserveArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result SourcePage
+	result, err = d.Handler.Observe(args.Cursor, args.MaxChanges, args.WaitMs)
+	if err != nil {
+		return
+	}
+	value := oaInventorySourceObserveResult{Value: result}
+	payload = Raw(encOAInventorySourceObserveResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventorySourceObserveResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *InventorySourceDispatcher) invokeVerify(args *oaInventorySourceVerifyArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result SourcePage
+	result, err = d.Handler.Verify(args.Target)
+	if err != nil {
+		return
+	}
+	value := oaInventorySourceVerifyResult{Value: result}
+	payload = Raw(encOAInventorySourceVerifyResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventorySourceVerifyResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *InventorySourceDispatcher) invokeRemove(args *oaInventorySourceRemoveArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result RemoveResult
+	result, err = d.Handler.Remove(args.Target)
+	if err != nil {
+		return
+	}
+	value := oaInventorySourceRemoveResult{Value: result}
+	payload = Raw(encOAInventorySourceRemoveResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventorySourceRemoveResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+
+func(r *reader)depthLimit()int{if r.limit>0 && r.limit<depthLimit{return r.limit};return depthLimit}
+
+func DecodeResourceAt(in []byte,depth,limit int)(*Resource,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeResource();return v,r.pos,e}
+func EncodeResourceAt(v *Resource,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encResource(nil,v,depth);if _,_,e:=DecodeResourceAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeResource(v *Resource)[]byte{return append(EncodeResourceAt(v,0),"\n"...)}
+func DecodeResource(in []byte)(*Resource,error){v,n,e:=DecodeResourceAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeOpenResultAt(in []byte,depth,limit int)(*OpenResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeOpenResult();return v,r.pos,e}
+func EncodeOpenResultAt(v *OpenResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encOpenResult(nil,v,depth);if _,_,e:=DecodeOpenResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeOpenResult(v *OpenResult)[]byte{return append(EncodeOpenResultAt(v,0),"\n"...)}
+func DecodeOpenResult(in []byte)(*OpenResult,error){v,n,e:=DecodeOpenResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeChunkAt(in []byte,depth,limit int)(*Chunk,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeChunk();return v,r.pos,e}
+func EncodeChunkAt(v *Chunk,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encChunk(nil,v,depth);if _,_,e:=DecodeChunkAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeChunk(v *Chunk)[]byte{return append(EncodeChunkAt(v,0),"\n"...)}
+func DecodeChunk(in []byte)(*Chunk,error){v,n,e:=DecodeChunkAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeReadResultAt(in []byte,depth,limit int)(*ReadResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeReadResult();return v,r.pos,e}
+func EncodeReadResultAt(v *ReadResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encReadResult(nil,v,depth);if _,_,e:=DecodeReadResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeReadResult(v *ReadResult)[]byte{return append(EncodeReadResultAt(v,0),"\n"...)}
+func DecodeReadResult(in []byte)(*ReadResult,error){v,n,e:=DecodeReadResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeCloseResultAt(in []byte,depth,limit int)(*CloseResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeCloseResult();return v,r.pos,e}
+func EncodeCloseResultAt(v *CloseResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encCloseResult(nil,v,depth);if _,_,e:=DecodeCloseResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeCloseResult(v *CloseResult)[]byte{return append(EncodeCloseResultAt(v,0),"\n"...)}
+func DecodeCloseResult(in []byte)(*CloseResult,error){v,n,e:=DecodeCloseResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeUploadAt(in []byte,depth,limit int)(*Upload,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeUpload();return v,r.pos,e}
+func EncodeUploadAt(v *Upload,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encUpload(nil,v,depth);if _,_,e:=DecodeUploadAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeUpload(v *Upload)[]byte{return append(EncodeUploadAt(v,0),"\n"...)}
+func DecodeUpload(in []byte)(*Upload,error){v,n,e:=DecodeUploadAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeStoredAt(in []byte,depth,limit int)(*Stored,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeStored();return v,r.pos,e}
+func EncodeStoredAt(v *Stored,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encStored(nil,v,depth);if _,_,e:=DecodeStoredAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeStored(v *Stored)[]byte{return append(EncodeStoredAt(v,0),"\n"...)}
+func DecodeStored(in []byte)(*Stored,error){v,n,e:=DecodeStoredAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeBeginResultAt(in []byte,depth,limit int)(*BeginResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeBeginResult();return v,r.pos,e}
+func EncodeBeginResultAt(v *BeginResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encBeginResult(nil,v,depth);if _,_,e:=DecodeBeginResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeBeginResult(v *BeginResult)[]byte{return append(EncodeBeginResultAt(v,0),"\n"...)}
+func DecodeBeginResult(in []byte)(*BeginResult,error){v,n,e:=DecodeBeginResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeAppendResultAt(in []byte,depth,limit int)(*AppendResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeAppendResult();return v,r.pos,e}
+func EncodeAppendResultAt(v *AppendResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encAppendResult(nil,v,depth);if _,_,e:=DecodeAppendResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeAppendResult(v *AppendResult)[]byte{return append(EncodeAppendResultAt(v,0),"\n"...)}
+func DecodeAppendResult(in []byte)(*AppendResult,error){v,n,e:=DecodeAppendResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeCommitResultAt(in []byte,depth,limit int)(*CommitResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeCommitResult();return v,r.pos,e}
+func EncodeCommitResultAt(v *CommitResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encCommitResult(nil,v,depth);if _,_,e:=DecodeCommitResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeCommitResult(v *CommitResult)[]byte{return append(EncodeCommitResultAt(v,0),"\n"...)}
+func DecodeCommitResult(in []byte)(*CommitResult,error){v,n,e:=DecodeCommitResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeAbortResultAt(in []byte,depth,limit int)(*AbortResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeAbortResult();return v,r.pos,e}
+func EncodeAbortResultAt(v *AbortResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encAbortResult(nil,v,depth);if _,_,e:=DecodeAbortResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeAbortResult(v *AbortResult)[]byte{return append(EncodeAbortResultAt(v,0),"\n"...)}
+func DecodeAbortResult(in []byte)(*AbortResult,error){v,n,e:=DecodeAbortResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeChangeAt(in []byte,depth,limit int)(*Change,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeChange();return v,r.pos,e}
+func EncodeChangeAt(v *Change,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encChange(nil,v,depth);if _,_,e:=DecodeChangeAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeChange(v *Change)[]byte{return append(EncodeChangeAt(v,0),"\n"...)}
+func DecodeChange(in []byte)(*Change,error){v,n,e:=DecodeChangeAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeChangePageAt(in []byte,depth,limit int)(*ChangePage,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeChangePage();return v,r.pos,e}
+func EncodeChangePageAt(v *ChangePage,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encChangePage(nil,v,depth);if _,_,e:=DecodeChangePageAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeChangePage(v *ChangePage)[]byte{return append(EncodeChangePageAt(v,0),"\n"...)}
+func DecodeChangePage(in []byte)(*ChangePage,error){v,n,e:=DecodeChangePageAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeListedObjectAt(in []byte,depth,limit int)(*ListedObject,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeListedObject();return v,r.pos,e}
+func EncodeListedObjectAt(v *ListedObject,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encListedObject(nil,v,depth);if _,_,e:=DecodeListedObjectAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeListedObject(v *ListedObject)[]byte{return append(EncodeListedObjectAt(v,0),"\n"...)}
+func DecodeListedObject(in []byte)(*ListedObject,error){v,n,e:=DecodeListedObjectAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeListingPageAt(in []byte,depth,limit int)(*ListingPage,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeListingPage();return v,r.pos,e}
+func EncodeListingPageAt(v *ListingPage,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encListingPage(nil,v,depth);if _,_,e:=DecodeListingPageAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeListingPage(v *ListingPage)[]byte{return append(EncodeListingPageAt(v,0),"\n"...)}
+func DecodeListingPage(in []byte)(*ListingPage,error){v,n,e:=DecodeListingPageAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeObjectAt(in []byte,depth,limit int)(*Object,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeObject();return v,r.pos,e}
+func EncodeObjectAt(v *Object,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encObject(nil,v,depth);if _,_,e:=DecodeObjectAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeObject(v *Object)[]byte{return append(EncodeObjectAt(v,0),"\n"...)}
+func DecodeObject(in []byte)(*Object,error){v,n,e:=DecodeObjectAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeEntryAt(in []byte,depth,limit int)(*Entry,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeEntry();return v,r.pos,e}
+func EncodeEntryAt(v *Entry,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encEntry(nil,v,depth);if _,_,e:=DecodeEntryAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeEntry(v *Entry)[]byte{return append(EncodeEntryAt(v,0),"\n"...)}
+func DecodeEntry(in []byte)(*Entry,error){v,n,e:=DecodeEntryAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeNameAt(in []byte,depth,limit int)(*Name,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeName();return v,r.pos,e}
+func EncodeNameAt(v *Name,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encName(nil,v,depth);if _,_,e:=DecodeNameAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeName(v *Name)[]byte{return append(EncodeNameAt(v,0),"\n"...)}
+func DecodeName(in []byte)(*Name,error){v,n,e:=DecodeNameAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeManifestAt(in []byte,depth,limit int)(*Manifest,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeManifest();return v,r.pos,e}
+func EncodeManifestAt(v *Manifest,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encManifest(nil,v,depth);if _,_,e:=DecodeManifestAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeManifest(v *Manifest)[]byte{return append(EncodeManifestAt(v,0),"\n"...)}
+func DecodeManifest(in []byte)(*Manifest,error){v,n,e:=DecodeManifestAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeHolderAt(in []byte,depth,limit int)(*Holder,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeHolder();return v,r.pos,e}
+func EncodeHolderAt(v *Holder,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encHolder(nil,v,depth);if _,_,e:=DecodeHolderAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeHolder(v *Holder)[]byte{return append(EncodeHolderAt(v,0),"\n"...)}
+func DecodeHolder(in []byte)(*Holder,error){v,n,e:=DecodeHolderAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeBasisAt(in []byte,depth,limit int)(*Basis,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeBasis();return v,r.pos,e}
+func EncodeBasisAt(v *Basis,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encBasis(nil,v,depth);if _,_,e:=DecodeBasisAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeBasis(v *Basis)[]byte{return append(EncodeBasisAt(v,0),"\n"...)}
+func DecodeBasis(in []byte)(*Basis,error){v,n,e:=DecodeBasisAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeHoldAt(in []byte,depth,limit int)(*Hold,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeHold();return v,r.pos,e}
+func EncodeHoldAt(v *Hold,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encHold(nil,v,depth);if _,_,e:=DecodeHoldAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeHold(v *Hold)[]byte{return append(EncodeHoldAt(v,0),"\n"...)}
+func DecodeHold(in []byte)(*Hold,error){v,n,e:=DecodeHoldAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeDanglingAt(in []byte,depth,limit int)(*Dangling,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeDangling();return v,r.pos,e}
+func EncodeDanglingAt(v *Dangling,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encDangling(nil,v,depth);if _,_,e:=DecodeDanglingAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeDangling(v *Dangling)[]byte{return append(EncodeDanglingAt(v,0),"\n"...)}
+func DecodeDangling(in []byte)(*Dangling,error){v,n,e:=DecodeDanglingAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeStoreErrorAt(in []byte,depth,limit int)(*StoreError,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeStoreError();return v,r.pos,e}
+func EncodeStoreErrorAt(v *StoreError,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encStoreError(nil,v,depth);if _,_,e:=DecodeStoreErrorAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeStoreError(v *StoreError)[]byte{return append(EncodeStoreErrorAt(v,0),"\n"...)}
+func DecodeStoreError(in []byte)(*StoreError,error){v,n,e:=DecodeStoreErrorAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeStoreAt(in []byte,depth,limit int)(*Store,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeStore();return v,r.pos,e}
+func EncodeStoreAt(v *Store,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encStore(nil,v,depth);if _,_,e:=DecodeStoreAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeStore(v *Store)[]byte{return append(EncodeStoreAt(v,0),"\n"...)}
+func DecodeStore(in []byte)(*Store,error){v,n,e:=DecodeStoreAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeHoldResultAt(in []byte,depth,limit int)(*HoldResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeHoldResult();return v,r.pos,e}
+func EncodeHoldResultAt(v *HoldResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encHoldResult(nil,v,depth);if _,_,e:=DecodeHoldResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeHoldResult(v *HoldResult)[]byte{return append(EncodeHoldResultAt(v,0),"\n"...)}
+func DecodeHoldResult(in []byte)(*HoldResult,error){v,n,e:=DecodeHoldResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeReleaseResultAt(in []byte,depth,limit int)(*ReleaseResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeReleaseResult();return v,r.pos,e}
+func EncodeReleaseResultAt(v *ReleaseResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encReleaseResult(nil,v,depth);if _,_,e:=DecodeReleaseResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeReleaseResult(v *ReleaseResult)[]byte{return append(EncodeReleaseResultAt(v,0),"\n"...)}
+func DecodeReleaseResult(in []byte)(*ReleaseResult,error){v,n,e:=DecodeReleaseResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeRenewResultAt(in []byte,depth,limit int)(*RenewResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeRenewResult();return v,r.pos,e}
+func EncodeRenewResultAt(v *RenewResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encRenewResult(nil,v,depth);if _,_,e:=DecodeRenewResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeRenewResult(v *RenewResult)[]byte{return append(EncodeRenewResultAt(v,0),"\n"...)}
+func DecodeRenewResult(in []byte)(*RenewResult,error){v,n,e:=DecodeRenewResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeDescribeResultAt(in []byte,depth,limit int)(*DescribeResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeDescribeResult();return v,r.pos,e}
+func EncodeDescribeResultAt(v *DescribeResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encDescribeResult(nil,v,depth);if _,_,e:=DecodeDescribeResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeDescribeResult(v *DescribeResult)[]byte{return append(EncodeDescribeResultAt(v,0),"\n"...)}
+func DecodeDescribeResult(in []byte)(*DescribeResult,error){v,n,e:=DecodeDescribeResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodePublishResultAt(in []byte,depth,limit int)(*PublishResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodePublishResult();return v,r.pos,e}
+func EncodePublishResultAt(v *PublishResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encPublishResult(nil,v,depth);if _,_,e:=DecodePublishResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodePublishResult(v *PublishResult)[]byte{return append(EncodePublishResultAt(v,0),"\n"...)}
+func DecodePublishResult(in []byte)(*PublishResult,error){v,n,e:=DecodePublishResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeManifestHoldersAt(in []byte,depth,limit int)(*ManifestHolders,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeManifestHolders();return v,r.pos,e}
+func EncodeManifestHoldersAt(v *ManifestHolders,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encManifestHolders(nil,v,depth);if _,_,e:=DecodeManifestHoldersAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeManifestHolders(v *ManifestHolders)[]byte{return append(EncodeManifestHoldersAt(v,0),"\n"...)}
+func DecodeManifestHolders(in []byte)(*ManifestHolders,error){v,n,e:=DecodeManifestHoldersAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeObjectHoldersAt(in []byte,depth,limit int)(*ObjectHolders,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeObjectHolders();return v,r.pos,e}
+func EncodeObjectHoldersAt(v *ObjectHolders,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encObjectHolders(nil,v,depth);if _,_,e:=DecodeObjectHoldersAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeObjectHolders(v *ObjectHolders)[]byte{return append(EncodeObjectHoldersAt(v,0),"\n"...)}
+func DecodeObjectHolders(in []byte)(*ObjectHolders,error){v,n,e:=DecodeObjectHoldersAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeInventoryPageAt(in []byte,depth,limit int)(*InventoryPage,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeInventoryPage();return v,r.pos,e}
+func EncodeInventoryPageAt(v *InventoryPage,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encInventoryPage(nil,v,depth);if _,_,e:=DecodeInventoryPageAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeInventoryPage(v *InventoryPage)[]byte{return append(EncodeInventoryPageAt(v,0),"\n"...)}
+func DecodeInventoryPage(in []byte)(*InventoryPage,error){v,n,e:=DecodeInventoryPageAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeRemoveResultAt(in []byte,depth,limit int)(*RemoveResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeRemoveResult();return v,r.pos,e}
+func EncodeRemoveResultAt(v *RemoveResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encRemoveResult(nil,v,depth);if _,_,e:=DecodeRemoveResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeRemoveResult(v *RemoveResult)[]byte{return append(EncodeRemoveResultAt(v,0),"\n"...)}
+func DecodeRemoveResult(in []byte)(*RemoveResult,error){v,n,e:=DecodeRemoveResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeSourceDescriptionAt(in []byte,depth,limit int)(*SourceDescription,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeSourceDescription();return v,r.pos,e}
+func EncodeSourceDescriptionAt(v *SourceDescription,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourceDescription(nil,v,depth);if _,_,e:=DecodeSourceDescriptionAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeSourceDescription(v *SourceDescription)[]byte{return append(EncodeSourceDescriptionAt(v,0),"\n"...)}
+func DecodeSourceDescription(in []byte)(*SourceDescription,error){v,n,e:=DecodeSourceDescriptionAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeSourceChangeAt(in []byte,depth,limit int)(*SourceChange,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeSourceChange();return v,r.pos,e}
+func EncodeSourceChangeAt(v *SourceChange,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourceChange(nil,v,depth);if _,_,e:=DecodeSourceChangeAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeSourceChange(v *SourceChange)[]byte{return append(EncodeSourceChangeAt(v,0),"\n"...)}
+func DecodeSourceChange(in []byte)(*SourceChange,error){v,n,e:=DecodeSourceChangeAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+
+func DecodeSourcePageAt(in []byte,depth,limit int)(*SourcePage,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeSourcePage();return v,r.pos,e}
+func EncodeSourcePageAt(v *SourcePage,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourcePage(nil,v,depth);if _,_,e:=DecodeSourcePageAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeSourcePage(v *SourcePage)[]byte{return append(EncodeSourcePageAt(v,0),"\n"...)}
+func DecodeSourcePage(in []byte)(*SourcePage,error){v,n,e:=DecodeSourcePageAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}

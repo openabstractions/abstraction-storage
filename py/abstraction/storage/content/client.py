@@ -1,7 +1,7 @@
 """Fixed content reader and writer with explicit outcomes and bounded bytes."""
 import secrets
 
-from . import rec as wire
+import abstraction.storage.content as wire
 
 MAX_APPEND_BYTES = 65536
 
@@ -45,9 +45,9 @@ class Client:
         return Client(self._transport.with_waiting(
             deadline=deadline, cancellation=cancellation))
 
-    def Open(self, naming_digest):
+    def open(self, naming_digest):
         require(digest(naming_digest), "canonical SHA256 digest required")
-        result = self._client.Open(naming_digest)
+        result = self._client.open(naming_digest)
         require((result.outcome == "opened") == (result.resource is not None),
                 "inconsistent open outcome")
         if result.resource is not None:
@@ -55,11 +55,11 @@ class Client:
                     "inconsistent resource")
         return result
 
-    def Read(self, value, offset, max_bytes):
+    def read(self, value, offset, max_bytes):
         require(resource(value) and type(offset) is int and 0 <= offset <= value.size
                 and type(max_bytes) is int and 1 <= max_bytes <= 65536,
                 "invalid read bounds")
-        result = self._client.Read(value.handle, offset, max_bytes)
+        result = self._client.read(value.handle, offset, max_bytes)
         require((result.outcome == "data") == (result.chunk is not None),
                 "inconsistent read outcome")
         if result.chunk is not None:
@@ -71,11 +71,11 @@ class Client:
                     and (chunk.data or chunk.eof), "inconsistent content chunk")
         return result
 
-    def Close(self, value):
+    def close(self, value):
         require(resource(value), "invalid resource")
-        return self._client.Close(value.handle)
+        return self._client.close(value.handle)
 
-    def Copy(self, value, destination):
+    def copy(self, value, destination):
         """One total wait budget; caller closes handle and verifies the digest.
 
         A partial write or non-data outcome stops immediately. confirmed counts
@@ -85,7 +85,7 @@ class Client:
         try:
             call = Client(self._transport.call_scope())
             while True:
-                result = call.Read(value, confirmed, 65536)
+                result = call.read(value, confirmed, 65536)
                 if result.outcome != "data":
                     raise OutcomeError(result.outcome)
                 chunk = result.chunk
@@ -108,14 +108,14 @@ def _cursor(value):
 class Changes:
     """Objects a store gains or loses through one content-changes binding.
 
-    Observe starts at the current end for an empty cursor. A gap requires
-    rebuilding state from Snapshot. Calls are never retried.
+    observe starts at the current end for an empty cursor. A gap requires
+    rebuilding state from snapshot. Calls are never retried.
     """
 
     def __init__(self, transport):
         self._transport = transport
 
-    def Observe(self, cursor, max_changes, wait_ms):
+    def observe(self, cursor, max_changes, wait_ms):
         require(_cursor(cursor) and type(max_changes) is int and 1 <= max_changes <= 256
                 and type(wait_ms) is int and 0 <= wait_ms <= 30000, "invalid change request")
         transport = self._transport
@@ -123,7 +123,7 @@ class Changes:
             import time
             transport = transport.with_waiting(deadline=time.monotonic() + transport.timeout + wait_ms / 1000,
                                                cancellation=transport.cancellation)
-        page = wire.ContentChangesClient(transport).Observe(cursor, max_changes, wait_ms)
+        page = wire.ContentChangesClient(transport).observe(cursor, max_changes, wait_ms)
         if page.outcome != "page":
             require(not page.changes and page.next == cursor and not page.at_end, "inconsistent change refusal")
             return page
@@ -136,9 +136,9 @@ class Changes:
             last = change.sequence
         return page
 
-    def List(self, continuation, limit):
+    def list(self, continuation, limit):
         require(_cursor(continuation) and type(limit) is int and 1 <= limit <= 256, "invalid listing request")
-        page = wire.ContentChangesClient(self._transport).List(continuation, limit)
+        page = wire.ContentChangesClient(self._transport).list(continuation, limit)
         if page.outcome != "page":
             require(not page.objects and not page.continuation and not page.cursor and not page.complete,
                     "inconsistent listing refusal")
@@ -152,11 +152,11 @@ class Changes:
             previous = listed.digest
         return page
 
-    def Snapshot(self, limit=256):
+    def snapshot(self, limit=256):
         """Every object of one snapshot and the cursor to observe from; refusal or gap raises OutcomeError."""
         objects, continuation, cursor = [], "", ""
         while True:
-            page = self.List(continuation, limit)
+            page = self.list(continuation, limit)
             if page.outcome != "page":
                 raise OutcomeError(page.outcome)
             require(not cursor or page.cursor == cursor, "snapshot cursor changed between pages")
@@ -168,7 +168,7 @@ class Changes:
 
 
 def new_request_id():
-    """A caller-retained identity; keep it before Begin to reconcile a lost reply."""
+    """A caller-retained identity; keep it before begin to reconcile a lost reply."""
     return secrets.token_hex(16)
 
 
@@ -195,10 +195,10 @@ class Writer:
         return Writer(self._transport.with_waiting(
             deadline=deadline, cancellation=cancellation))
 
-    def Begin(self, request, naming_digest, size):
+    def begin(self, request, naming_digest, size):
         require(request_id(request) and digest(naming_digest) and type(size) is int
                 and 0 <= size < 2**63, "invalid write request")
-        result = self._client.Begin(request, naming_digest, size)
+        result = self._client.begin(request, naming_digest, size)
         stored_outcome = result.outcome in ("committed", "present")
         require((result.outcome == "started") == (result.upload is not None)
                 and stored_outcome == (result.stored is not None)
@@ -215,11 +215,11 @@ class Writer:
                     "inconsistent stored result")
         return result
 
-    def Append(self, value, offset, data):
+    def append(self, value, offset, data):
         require(upload(value) and type(offset) is int and offset >= 0
                 and isinstance(data, bytes) and 1 <= len(data) <= MAX_APPEND_BYTES,
                 "invalid append bounds")
-        result = self._client.Append(value.handle, offset, data)
+        result = self._client.append(value.handle, offset, data)
         if result.outcome == "accepted":
             ok = result.received == offset + len(data) and result.received <= value.size
         elif result.outcome in ("out_of_order", "too_large"):
@@ -229,9 +229,9 @@ class Writer:
         require(ok, "inconsistent append result")
         return result
 
-    def Commit(self, value):
+    def commit(self, value):
         require(upload(value), "invalid upload")
-        result = self._client.Commit(value.handle)
+        result = self._client.commit(value.handle)
         stored = result.stored
         require((result.outcome == "committed") == (stored is not None)
                 and (stored is None or (stored.digest == value.digest
@@ -241,19 +241,19 @@ class Writer:
                 and 0 <= result.received <= value.size, "inconsistent commit result")
         return result
 
-    def Abort(self, value):
+    def abort(self, value):
         require(upload(value), "invalid upload")
-        return self._client.Abort(value.handle)
+        return self._client.abort(value.handle)
 
-    def Write(self, request, naming_digest, content):
+    def write(self, request, naming_digest, content):
         """Upload bytes under a caller-retained identity; one total wait budget.
 
         Retrying with the same identity after an uncertain failure resumes the
-        live upload or returns its committed result. Write never aborts.
+        live upload or returns its committed result. write never aborts.
         """
         require(isinstance(content, bytes), "content must be bytes")
         call = Writer(self._transport.call_scope())
-        begun = call.Begin(request, naming_digest, len(content))
+        begun = call.begin(request, naming_digest, len(content))
         if begun.outcome in ("committed", "present"):
             return begun.stored
         if begun.outcome != "started":
@@ -261,11 +261,11 @@ class Writer:
         value, offset = begun.upload, begun.upload.received
         while offset < len(content):
             chunk = content[offset:offset + MAX_APPEND_BYTES]
-            appended = call.Append(value, offset, chunk)
+            appended = call.append(value, offset, chunk)
             if appended.outcome not in ("accepted", "out_of_order"):
                 raise OutcomeError(appended.outcome)
             offset = appended.received
-        committed = call.Commit(value)
+        committed = call.commit(value)
         if committed.outcome != "committed":
             raise OutcomeError(committed.outcome)
         return committed.stored

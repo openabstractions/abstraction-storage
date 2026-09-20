@@ -15,6 +15,37 @@ namespace abstraction::storage::api {
 
 using Raw = std::string;
 
+class Refusal : public std::runtime_error {
+public:
+    Refusal(const char* word, std::size_t offset)
+        : std::runtime_error(std::string("refused: ") + word + " at byte " + std::to_string(offset)),
+          word(word),
+          offset(offset) {}
+    const char* word;
+    std::size_t offset;
+};
+
+inline const std::vector<std::string> kFailureNames = {"read_only", "not_found"};
+
+// Reference issued by a Store. Size zero means unknown. Locator is opaque
+// provider binding data; applications must not treat it as path or authority.
+// Only an explicit Local provider projects it to a path.
+struct Ref {
+    std::string store;
+    std::string digest;
+    std::int64_t size = 0;
+    std::string locator;
+};
+
+// Absent reference means no known match; discovery does not hash bytes. Naming
+// conventions supply evidence and consumers still verify content.
+struct FindResult {
+    std::optional<Ref> reference;
+};
+
+// Codec machinery. Nothing here is API; it may change in any release.
+namespace detail {
+
 inline void esc(std::string& out, const std::string& s);
 
 inline void esc_byte(std::string& out, unsigned char c) {
@@ -56,6 +87,8 @@ inline void strs(std::string& out, const std::vector<std::string>& v, int depth)
     pad(out, depth);
     out += ']';
 }
+
+
 
 inline bool ws(unsigned char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; }
 
@@ -131,24 +164,8 @@ inline void esc(std::string& out, const std::string& s) {
     for (unsigned char c : s) esc_byte(out, c);
     out += '"';
 }
-
-inline const std::vector<std::string> kFailureNames = {"read_only", "not_found"};
-
-// Reference issued by a Store. Size zero means unknown. Locator is opaque
-// provider binding data; applications must not treat it as path or authority.
-// Only an explicit Local provider projects it to a path.
-struct Ref {
-    std::string store;
-    std::string digest;
-    std::int64_t size = 0;
-    std::string locator;
-};
-
-// Absent reference means no known match; discovery does not hash bytes. Naming
-// conventions supply evidence and consumers still verify content.
-struct FindResult {
-    std::optional<Ref> reference;
-};
+inline void enc_ref(std::string&, const Ref&, int);
+inline void enc_find_result(std::string&, const FindResult&, int);
 
 inline void enc_ref(std::string& out, const Ref& v, int depth) {
     out += '{';
@@ -180,7 +197,7 @@ inline void enc_ref(std::string& out, const Ref& v, int depth) {
     out += '}';
 }
 
-inline void enc_findresult(std::string& out, const FindResult& v, int depth) {
+inline void enc_find_result(std::string& out, const FindResult& v, int depth) {
     out += '{';
     bool first = true;
     if (v.reference.has_value()) {
@@ -195,25 +212,8 @@ inline void enc_findresult(std::string& out, const FindResult& v, int depth) {
     out += '}';
 }
 
-inline std::string encode(const Ref& v) {
-    std::string out;
-    enc_ref(out, v, 0);
-    out += '\n';
-    return out;
-}
-
 inline constexpr int kDepthLimit = 64;
 inline constexpr std::size_t kI64Digits = 19;
-
-class Refusal : public std::runtime_error {
-public:
-    Refusal(const char* word, std::size_t offset)
-        : std::runtime_error(std::string("refused: ") + word + " at byte " + std::to_string(offset)),
-          word(word),
-          offset(offset) {}
-    const char* word;
-    std::size_t offset;
-};
 
 inline void append_rune(std::string& out, std::uint32_t cp) {
     if (cp < 0x80) {
@@ -508,7 +508,7 @@ struct Reader {
 };
 
 inline Ref decode_ref(Reader& r);
-inline FindResult decode_findresult(Reader& r);
+inline FindResult decode_find_result(Reader& r);
 
 inline Ref decode_ref(Reader& r) {
     if (r.at() != '{') r.refuse("wrong_type");
@@ -557,7 +557,7 @@ inline Ref decode_ref(Reader& r) {
     return v;
 }
 
-inline FindResult decode_findresult(Reader& r) {
+inline FindResult decode_find_result(Reader& r) {
     if (r.at() != '{') r.refuse("wrong_type");
     r.enter();
     ++r.pos;
@@ -591,15 +591,25 @@ inline FindResult decode_findresult(Reader& r) {
     return v;
 }
 
+}  // namespace detail
+
+inline std::string encode(const Ref& v) {
+    std::string out;
+    detail::enc_ref(out, v, 0);
+    out += '\n';
+    return out;
+}
+
 inline Ref decode(std::string_view data) {
-    Reader r{data};
+    detail::Reader r{data};
     r.skip_ws();
-    Ref v = decode_ref(r);
+    Ref v = detail::decode_ref(r);
     r.skip_ws();
     if (r.pos < r.buf.size()) r.refuse("trailing_bytes");
     return v;
 }
 
+namespace detail {
 // kRefusals is in the order two of them are chosen between.
 inline const std::vector<std::string> kRefusals = {"malformed", "bad_string", "number_spelling", "wrong_type", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "trailing_bytes"};
 
@@ -608,19 +618,20 @@ inline int refusal_rank(std::string_view word) {
         if (kRefusals[i] == word) return static_cast<int>(i);
     return -1;
 }
+}  // namespace detail
 
 struct Store{virtual ~Store()=default;
-virtual std::string Name()=0;
-virtual FindResult Find(const std::string& arg0)=0;
-virtual Ref Place(const std::string& arg0,const std::int64_t& arg1)=0;
+virtual std::string name()=0;
+virtual FindResult find(const std::string& digest)=0;
+virtual Ref place(const std::string& digest,const std::int64_t& size)=0;
 };
 
 struct Local{virtual ~Local()=default;
-virtual std::string Path(const Ref& arg0)=0;
+virtual std::string path(const Ref& reference)=0;
 };
 
 struct Writable{virtual ~Writable()=default;
-virtual void Commit(const Ref& arg0)=0;
+virtual void commit(const Ref& reference)=0;
 };
 
 }  // namespace abstraction::storage::api

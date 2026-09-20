@@ -10,7 +10,7 @@ func TestNamingDoesNotClaimVerifiedContent(t *testing.T) {
 	_, c, d, _ := fixture(t)
 	opened, _ := c.Open(d)
 	read, _ := c.Read(opened.Resource.Handle, 0, 65536)
-	if opened.Resource.Verification != "unverified" || read.Chunk == nil || !read.Chunk.Eof {
+	if opened.Resource.Verification.String() != "unverified" || read.Chunk == nil || !read.Chunk.EOF {
 		t.Fatal(opened, read)
 	}
 	actual := fmt.Sprintf("sha256:%x", sha256.Sum256(read.Chunk.Data))

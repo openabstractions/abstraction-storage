@@ -12,7 +12,7 @@ func TestGlobalLimitAndRestartGap(t *testing.T) {
 		other := c
 		other.scope = fmt.Sprint(i)
 		opened, _ := other.Open(d)
-		if opened.Outcome != "opened" {
+		if opened.Outcome.String() != "opened" {
 			t.Fatal(opened)
 		}
 		if i == 0 {
@@ -20,14 +20,14 @@ func TestGlobalLimitAndRestartGap(t *testing.T) {
 		}
 	}
 	x, _ := c.Open(d)
-	if x.Outcome != "exhausted" {
+	if x.Outcome.String() != "exhausted" {
 		t.Fatal(x)
 	}
 	fresh := newRegistry(r.store, r.policy)
 	defer fresh.close()
 	restarted := receiver{fresh, "0", nil, c.ctx}
 	gap, _ := restarted.Read(first, 0, 1)
-	if gap.Outcome != "gap" {
+	if gap.Outcome.String() != "gap" {
 		t.Fatal(gap)
 	}
 }
