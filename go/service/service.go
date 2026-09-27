@@ -23,6 +23,7 @@ type Host struct {
 	registry  *registry
 	writers   *writers
 	changes   *changeJournal
+	inventory *inventory
 	interval  time.Duration
 	listener  listen.Listener
 	owner     string
@@ -50,12 +51,12 @@ func Listen(endpoint string, store storage.Store, policy Policy) (*Host, error) 
 	if owner.Uid == "" {
 		return nil, errors.New("storage: service principal unavailable")
 	}
-	l, e := listen.Listen(endpoint)
+	l, e := listen.ListenFramed(endpoint, listen.Program)
 	if e != nil {
 		return nil, e
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Host{registry: newRegistry(store, policy), listener: l, owner: owner.Uid, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 32)}, nil
+	return &Host{registry: newRegistry(store, policy), listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 32}), owner: owner.Uid, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 32)}, nil
 }
 func (h *Host) Close() error {
 	var e error
@@ -64,13 +65,16 @@ func (h *Host) Close() error {
 		e = h.listener.Close()
 		h.registry.close()
 		h.lifecycle.Lock()
-		writers, changes := h.writers, h.changes
+		writers, changes, composed := h.writers, h.changes, h.inventory
 		h.lifecycle.Unlock()
 		if writers != nil {
 			writers.close()
 		}
 		if changes != nil {
 			changes.close()
+		}
+		if composed != nil {
+			composed.close()
 		}
 	})
 	return e
@@ -153,7 +157,7 @@ func (h *Host) Serve(ctx context.Context) error {
 		return errors.New("storage: host already served")
 	}
 	h.serving = true
-	writers, changes, interval := h.writers, h.changes, h.interval
+	writers, changes, interval, composed := h.writers, h.changes, h.interval, h.inventory
 	h.lifecycle.Unlock()
 	if writers != nil && changes != nil {
 		writers.mu.Lock()
@@ -200,6 +204,9 @@ func (h *Host) Serve(ctx context.Context) error {
 				if writers != nil {
 					writers.sweep()
 				}
+				if composed != nil {
+					composed.sweep()
+				}
 			}
 		}
 	}()
@@ -242,6 +249,9 @@ func (h *Host) Serve(ctx context.Context) error {
 				}
 				if changes != nil {
 					services = append(services, &api.ContentChangesDispatcher{Handler: changesReceiver{journal: changes, scope: scope, peer: peer, ctx: callCtx, wait: call.WaitContext()}})
+				}
+				if composed != nil {
+					services = append(services, &api.InventoryDispatcher{Handler: inventoryReceiver{inventory: composed, scope: scope, peer: peer, ctx: callCtx}})
 				}
 				var reply []byte
 				reply, e = api.ServeEndpoint(call.Frame, "openabstractions", "", services...)

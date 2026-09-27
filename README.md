@@ -2,10 +2,10 @@
 
 Read or write shared content by its verified identity while the storage service
 keeps backend paths and file permissions private. A client opens content by its
-canonical identifier, transfers bounded chunks and closes its own resource. The
+canonical identifier, transfers bounded chunks and closes its own handle. The
 same application API can sit over a local store or another authorized provider.
 
-Choose the profile that matches the application:
+Choose the service that matches the application:
 
 | Need | Contract |
 | --- | --- |
@@ -13,7 +13,7 @@ Choose the profile that matches the application:
 | Store bytes atomically under their SHA-256 digest | `abstraction.storage/content-writer@1` |
 | Observe the latest content inventory and changes | `abstraction.storage/content-changes@1` |
 
-Each profile is resolved independently through the facade. Rights are checked
+Each service is resolved independently through the facade. Rights are checked
 at the service that owns the content. A digest is an identifier; callers that
 require byte integrity verify the assembled digest or require hashed evidence.
 
@@ -32,6 +32,92 @@ name alone does not grant access or prove the returned bytes: verify the assembl
 digest where that guarantee is required. Copy helpers bound memory and retain one
 waiting scope; cancellation leaves service-owned content intact.
 
+A file a download job delivers is not thereby readable here by its digest.
+[`abstraction-download`](https://github.com/openabstractions/abstraction-download)
+writes to the sink its request names, never into the content root, and nothing
+copies one into the other on completion. A job-service download has no
+destination path for an application to read directly; an application pages
+the bytes out of the job's `ReadResult` and hands them to `content-writer@1`
+itself, to make them readable through `content-reader@1`. [The worked
+bridge](https://github.com/openabstractions/abstraction-download#reading-a-finished-download-through-storage)
+is on the download layer's own page.
+
+### Reading content
+
+`abstraction.storage/content-reader@1` reads bytes by their canonical SHA-256
+digest. Resolve it with Go `Machine.ResolveStorage` or Python
+`Machine().resolve_storage(scope="local")`. `Open` returns a `Resource` handle
+bound to that digest; `Read` transfers bounded chunks against the handle,
+never the digest, so the object cannot change under a resumed read; `Close`
+releases it. A `gap` outcome on `Read` means the content changed since `Open`:
+reopen by digest rather than continue the chunk sequence. `Open` itself
+answers `not_found`, `forbidden`, `unsupported` or `unavailable` when there is
+no handle to return.
+
+```go
+reader, err := facade.Discover().ResolveStorage(ctx, facade.Requirements{})
+if err != nil {
+	return err
+}
+opened, err := reader.Open(ctx, digest)
+if err != nil {
+	return err
+}
+if opened.Outcome != content.OpenOutcomeOpened {
+	return fmt.Errorf("storage refused open: %s", opened.Outcome)
+}
+resource := *opened.Resource
+var buf bytes.Buffer
+for offset := int64(0); ; {
+	chunk, err := reader.Read(ctx, resource, offset, 65536)
+	if err != nil {
+		return err
+	}
+	if chunk.Outcome == content.ReadOutcomeGap {
+		return fmt.Errorf("content changed under us; reopen by digest")
+	}
+	if chunk.Outcome != content.ReadOutcomeData {
+		return fmt.Errorf("storage refused read: %s", chunk.Outcome)
+	}
+	buf.Write(chunk.Chunk.Data)
+	offset += int64(len(chunk.Chunk.Data))
+	if chunk.Chunk.EOF {
+		break
+	}
+}
+if _, err := reader.Close(ctx, resource); err != nil {
+	return err
+}
+fmt.Println(buf.Len(), "bytes read")
+```
+
+```python
+from abstraction.facade.client import Machine
+
+reader = Machine().resolve_storage(scope="local")
+opened = reader.open(digest)
+if opened.outcome != "opened":
+    raise RuntimeError(f"storage refused open: {opened.outcome}")
+resource = opened.resource
+data, offset = bytearray(), 0
+while True:
+    chunk = reader.read(resource, offset, 65536)
+    if chunk.outcome == "gap":
+        raise RuntimeError("content changed under us; reopen by digest")
+    if chunk.outcome != "data":
+        raise RuntimeError(f"storage refused read: {chunk.outcome}")
+    data += chunk.chunk.data
+    offset += len(chunk.chunk.data)
+    if chunk.chunk.eof:
+        break
+reader.close(resource)
+print(len(data), "bytes read")
+```
+
+Python's `Client.copy(resource, destination)` does the same read loop into a
+writer under one wait budget and raises `OutcomeError` on a non-`data`
+outcome, including `gap`.
+
 ### Writing content
 
 `abstraction.storage/content-writer@1` stores bytes under their SHA-256 digest.
@@ -43,6 +129,13 @@ an uncertain failure, call `Write` again with the same identity to resume the
 upload or read its committed result. Other service outcomes, such as
 `too_large`, `busy`, `conflict`, `forbidden` or `unavailable`, arrive as
 `*client.OutcomeError`. Readers see either no object or the whole object.
+
+**Limits.** Sixteen uploads run service-wide at once, four per subject; each
+`Append` carries at most 64 KiB (65536 bytes); the Go `Writer` client holds
+each call to a 5-second wait budget by default. A multi-gigabyte file crosses
+the 64 KiB bound tens of thousands of times — a 40 GB upload is roughly
+655,000 `Append` calls, each its own bounded round trip. It holds one of the
+sixteen (four per subject) upload slots for as long as those calls take.
 
 ```go
 writer, err := facade.Discover().ResolveStorageWriter(ctx, facade.Requirements{})
@@ -179,7 +272,8 @@ the digest and observation with `abstraction.storage/content.observe` on
 Read [CONTRACT.md](CONTRACT.md) and [content.thrift](content.thrift) for exact
 outcomes, bounds and authority semantics. Service support and language clients
 are separate from published package availability and native platform qualification.
-macOS local Program proof remains unavailable.
+Current macOS source supplies Program proof over XPC; its Unix-socket path
+remains below that policy, and the published 0.2.0 package predates XPC.
 
 ## Content references: manifests, holds, inventory
 
@@ -196,37 +290,41 @@ arrives. A `Hold` records one program's declared or observed dependence on a
 manifest or digest, carried by a `Holder`. `Dangling` records an index entry
 naming content no store holds.
 
-**Codecs generated, no application-facing server yet.** Every one of the five
-services has a generated request/reply codec and wire-level client in Go, C++,
-Python, Rust and JavaScript — `ManifestsClient`, `HoldsClient`,
-`InventoryClient`, `ContentRemoverClient`, `InventorySourceClient` — starting
+**Served today.** `Inventory` composes designated sources into one read: `go/service`
+registers it with `Host.EnableInventory`, the runtime wires it in
+`serve/runtime_inference.go`, and the facade resolves it with
+`Machine.ResolveStorageInventory`. `InventorySource` is served by the sibling
+layer `abstraction-storage-over-local-stores`'s `inventoryd` (not yet published
+as its own repository), answering `Describe`, `Snapshot`, `Observe` and
+`Verify` for what it reads on one machine; `content.thrift`'s service doc
+states the runtime accepts a source only under an
+`abstraction.storage/inventory.provide` rule, naming sources that never talk
+to applications directly.
+
+**Not built.** Every one of the five services has a generated request/reply
+codec and wire-level client in Go, C++, Python, Rust and JavaScript —
+`ManifestsClient`, `HoldsClient`, `ContentRemoverClient` among them — starting
 in [`go/abstraction/storage/content/rec.go`](go/abstraction/storage/content/rec.go)
 and mirrored in `cpp/abstraction/storage/content/rec.h`,
 `py/abstraction/storage/content/_codec.py`, `rs/abstraction/storage/content/rec.rs`
-and `javascript/js/abstraction/storage/content/index.d.mts`. `go/service`, this
-repository's only server, registers exactly `content-reader@1`,
-`content-writer@1` and `content-changes@1`; nothing elsewhere in the tree
-implements `Manifests`, `Holds`, `Inventory` or `ContentRemover`, and
-[`CONTRACT.md`](CONTRACT.md) does not cover them. The facade has no
-`ResolveStorageManifests`, `ResolveStorageHolds` or `ResolveStorageInventory`,
-and the rights catalogue carries no `holds.manage`, `inventory.read` or
-`inventory.provide` action. These four are declared wire contracts today.
+and `javascript/js/abstraction/storage/content/index.d.mts`. Past the codec,
+none of the three below has a server, a facade resolve method or a rights
+catalogue action, and [`CONTRACT.md`](CONTRACT.md) does not cover them:
 
-`InventorySource` is served today, by the sibling layer
-`abstraction-storage-over-local-stores`'s `inventoryd` (not yet published as
-its own repository), which answers `Describe`, `Snapshot`, `Observe` and `Verify` for
-what it reads on one machine. `content.thrift`'s service doc states the
-runtime accepts a source only under an `abstraction.storage/inventory.provide`
-rule, naming sources that never talk to applications. That acceptance path is
-a design statement in the contract text. Nothing under `serve/` in the parent
-project registers a source, reads an `--inventory-source` flag or evaluates
-an `inventory.provide` rule. `Manifests`, `Holds`, `Inventory` and
-`ContentRemover` are how the runtime would eventually expose what
-`InventorySource` providers report.
+- **`Manifests`** — no server registers it; the facade has no
+  `ResolveStorageManifests`.
+- **`Holds`** — no server registers it; the facade has no `ResolveStorageHolds`;
+  the rights catalogue carries no `holds.manage` action.
+- **`ContentRemover`** — no server registers it; the facade has no resolve
+  method for it.
+
+`Manifests`, `Holds` and `ContentRemover` are how the runtime would eventually
+expose what `InventorySource` providers report; `Inventory` above is the first
+of the five to make that crossing.
 
 ## Explicit native providers
 
-The existing `Store`, `Local` and `Writable` interfaces
+The existing provider `Store`, `Local` and `Writable` interfaces
 ([`go/storage.go`](go/storage.go)) are provider building blocks, with
 `NewContentStore` ([`go/content.go`](go/content.go)) and `NewForeignStore`
 ([`go/foreign.go`](go/foreign.go)) as the shipped constructors composed by
@@ -244,6 +342,8 @@ for scoped evidence rather than a blanket cross-language provider verdict.
 
 ## Obtain
 
+Install the runtime first: https://openabstractions.org/adopt.html
+
 - **Go.** `go get github.com/openabstractions/abstraction-storage/go`. No
   tagged release; `go get` resolves a pseudo-version of `main`.
 - **C++, Python, Rust, JavaScript.** Generated protocol, codec and client
@@ -256,12 +356,14 @@ for scoped evidence rather than a blanket cross-language provider verdict.
 
 Content-reader, content-writer and content-changes are implemented, tested
 and reachable through the facade in Go, C++, Python and Rust, and through the
-generated protocol client in JavaScript. The content-references profiles are
+generated protocol client in JavaScript. The content-references services are
 generated in every language, with `InventorySource` served by a sibling
-layer's provider and the other four undeployed, per the section above. No
-tagged release exists for this repository. Service support and language
-clients are separate from published package availability and native platform
-qualification. macOS local Program proof remains unavailable.
+layer's provider and the other four undeployed, per the section above. The
+Go module has a `go/v0.3.0` tag. The tagged source defines its released
+service and client surface; this section describes current source. Service
+support and language clients are separate from published package availability
+and native platform qualification. Current macOS source supplies Program proof over XPC; the
+published 0.2.0 package predates that support.
 
 ## Requirements
 

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Open Abstractions — schema</title>
+<link rel="stylesheet" href="style.css">
+
+<main>
+<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">Open Abstractions</a>
+<a href="adopt.html">Adopt</a><a href="cases.html">Cases</a><span class="nav-devs-label">for developers</span><a href="reference.html">Reference</a><a href="coverage.html">Coverage</a><a href="catalogue.html">Catalogue</a><a href="https://github.com/openabstractions">GitHub</a></nav>
+
+
+<h1>Schema</h1>
+<p class="lead">Use this reference to inspect fields, methods, accepted values and failure outcomes. For setup and working examples, start with the <a href="reference.html">API guide</a>.</p>
+<p>Definition: <code>abstraction.storage.lend</code></p>
+<nav aria-label="Schema sections" class="meta"><a href="#service-Lending">Lending</a> · <a href="#types">Types</a> · <a href="#structs">Fields</a> · <a href="#enums">Enumerations</a> · <a href="#constants">Constants</a> · <a href="#encoding">Encoding</a> · <a href="#refusals">Refusals</a></nav>
+<h2 id="service-Lending">Service <code>Lending</code> <span class="tag">[DEF-S1]</span></h2>
+<p>Storage lending implemented by a provider and mediated by the runtime. The provider listens on the shared identity-bound transport and admits designated runtime executables of its own account. A call whose peer identity could not be obtained fails with caller_unavailable; insufficient program proof fails with identity_required; another account or program reads not_permitted. The runtime decides the application caller&#39;s right before forwarding. Providers keep a ledger of their placements and preserve source files. Symbolic and hard links require no model-byte reads; an explicitly requested copy reads the source bytes.</p>
+<p>Wire identity: <code>abstraction.storage/lend@1</code></p>
+<p>Handler error codes, declared by <code>lending_error_codes</code>: <code>caller_unavailable</code>, <code>identity_required</code>. Generated bindings name each as a ServiceErrorCode member beside the dispatcher's own codes.</p>
+<p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
+<p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
+<p>Place the named object in the engine&#39;s own directory by link, so that engine serves it. store and object are the inventory&#39;s naming: object is a manifest id, the name the store gives that manifest, or an object locator, and never a path. engine is a declared host name this provider supports. copy true asks for a copy where a link cannot be made and is counted as a copy; false refuses with link_refused instead. Gated by abstraction.storage/lend on resource engine:&lt;name&gt;, admitted through the runtime&#39;s first-use question. An object this provider&#39;s stores do not hold is unknown_object; an engine it does not support, or one whose own configuration cannot be pointed at the lent directory without a person editing its configuration file, is unsupported_engine; a link neither the operating system nor the volume allows is link_refused; an object already lent to that engine is already_lent with the entry in force. The original is never moved, renamed or deleted.</p>
+<h3><code>Lend</code></h3><p><code>request-response</code> <code>LendResult</code></p><ul>
+<li>Argument 1: <code>string</code> <code>store</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>string</code> <code>object</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>string</code> <code>engine</code> (required, including zero/false/empty)</li>
+<li>Argument 4: <code>bool</code> <code>copy</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Remove exactly the link this entry created and the directories this provider made for it, and drop the entry. The source file is untouched. Gated by abstraction.storage/lend on the entry&#39;s own engine:&lt;name&gt;. The engine&#39;s own list may keep naming the model until that engine&#39;s idle-unload timer fires; the ledger is the answer to whether the lend is in force.</p>
+<h3><code>Unlend</code></h3><p><code>request-response</code> <code>UnlendResult</code></p><ul>
+<li>Argument 1: <code>string</code> <code>entry</code> (required, including zero/false/empty)</li>
+</ul>
+<p>The ledger. limit is 1..256. Continuations are at most 256 bytes and name a retained page position; an unknown one is invalid.</p>
+<h3><code>Lends</code></h3><p><code>request-response</code> <code>LendPage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
+</ul>
+<h2 id="encoding">Encoding <span class="tag">[DEF-E1]</span></h2>
+<div class="wrap"><table>
+<thead><tr><th>setting</th><th>value</th><th>rule</th></tr></thead>
+<tbody>
+<tr><td><code>escape</code></td><td><code>minimal</code></td><td><span class="tag">[DEF-E2]</span></td></tr>
+<tr><td><code>indent</code></td><td><code>2</code></td><td><span class="tag">[DEF-E3]</span></td></tr>
+<tr><td><code>map_keys</code></td><td><code>utf8-bytes</code></td><td><span class="tag">[DEF-E4]</span></td></tr>
+<tr><td><code>numbers</code></td><td><code>integer-decimal</code></td><td><span class="tag">[DEF-E5]</span></td></tr>
+<tr><td><code>opaque</code></td><td><code>verbatim</code></td><td><span class="tag">[DEF-E6]</span></td></tr>
+<tr><td><code>terminator</code></td><td><code>newline</code></td><td><span class="tag">[DEF-E7]</span></td></tr>
+<tr><td><code>duplicate_keys</code></td><td><code>refuse</code></td><td><span class="tag">[DEF-E8]</span></td></tr>
+<tr><td><code>depth_limit</code></td><td><code>64</code></td><td><span class="tag">[DEF-E9]</span></td></tr>
+</tbody></table></div>
+<h2 id="types">Types</h2>
+<div class="wrap"><table>
+<thead><tr><th>kind</th><th>types</th></tr></thead>
+<tbody>
+<tr><td>built in</td><td><code>LendOutcome</code> <code>LendsOutcome</code> <code>Link</code> <code>UnlendOutcome</code> <code>bool</code> <code>i64</code> <code>string</code></td></tr>
+<tr><td>declared below</td><td><code>Lend</code></td></tr>
+<tr><td>repeated record <span class="tag">[DEF-A9]</span></td><td><code>list&lt;Lend&gt;</code></td></tr>
+</tbody></table></div>
+<h3 id="named-types">Named types <span class="tag">[DEF-T2]</span></h3>
+<p class="meta">One spelling is written <span class="tag">[DEF-G2]</span> and a wider set is read <span class="tag">[DEF-G1]</span>; the width between them is the interoperability guarantee.</p>
+<div class="wrap"><table>
+<thead><tr><th>name</th><th>is</th><th>written</th><th>read</th></tr></thead>
+<tbody>
+<tr><td><code>timestamp</code></td><td><code>string</code></td><td><code>rfc3339-micros</code></td><td><code>rfc3339-wide</code></td></tr>
+</tbody></table></div>
+<h2 id="structs">Structs <span class="tag">[DEF-T1]</span></h2>
+<p class="meta">A field is required, or says when it is omitted <span class="tag">[DEF-A4]</span>. Each struct says on its own what it does with a field name it has never heard of <span class="tag">[DEF-A7]</span>. A wire name never moves; where a language must spell it differently the field says so <span class="tag">[DEF-A2]</span>.</p>
+<h3 id="struct-Lend"><code>Lend</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>id</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>engine</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>store</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>object</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>5</td><td><code>name</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>6</td><td><code>link</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>7</td><td><code>kind</code></td><td><code>Link</code></td><td>required</td><td>—</td></tr>
+<tr><td>8</td><td><code>size</code></td><td><code>i64</code></td><td>required</td><td>—</td></tr>
+<tr><td>9</td><td><code>created</code></td><td><code>timestamp</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-LendResult"><code>LendResult</code></h3>
+<p class="meta">the document <span class="tag">[DEF-A1]</span> · unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>LendOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>lend</code></td><td><code>Lend</code></td><td>optional · omitted when absent</td><td>—</td></tr>
+<tr><td>3</td><td><code>detail</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-UnlendResult"><code>UnlendResult</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>UnlendOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>detail</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h3 id="struct-LendPage"><code>LendPage</code></h3>
+<p class="meta">unknown fields <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>outcome</code></td><td><code>LendsOutcome</code></td><td>required</td><td>—</td></tr>
+<tr><td>2</td><td><code>lends</code></td><td><code>list&lt;Lend&gt;</code></td><td>required</td><td>—</td></tr>
+<tr><td>3</td><td><code>continuation</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
+<tr><td>4</td><td><code>complete</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
+</tbody></table></div>
+<h2 id="enums">Enumerations <span class="tag">[DEF-T5]</span></h2>
+<p>Enum fields carry JSON strings containing exact member wire spellings, never numeric IDs. Unknown names are preserved with grant and refused as bad_enum with refuse on read and write. Optional absent fields preserve presence separately from an empty string.</p>
+<p class="meta">An enumeration is a closed vocabulary of wire names, and each one says on its own what a reader does with a member it has never heard of <span class="tag">[DEF-A5]</span>.</p>
+<h3 id="enum-Link"><code>Link</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>symbolic</code></td><td><code>symbolic</code></td></tr>
+<tr><td>2</td><td><code>hard</code></td><td><code>hard</code></td></tr>
+<tr><td>3</td><td><code>copy</code></td><td><code>copy</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-LendOutcome"><code>LendOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>lent</code></td><td><code>lent</code></td></tr>
+<tr><td>2</td><td><code>not_permitted</code></td><td><code>not_permitted</code></td></tr>
+<tr><td>3</td><td><code>unsupported_engine</code></td><td><code>unsupported_engine</code></td></tr>
+<tr><td>4</td><td><code>link_refused</code></td><td><code>link_refused</code></td></tr>
+<tr><td>5</td><td><code>already_lent</code></td><td><code>already_lent</code></td></tr>
+<tr><td>6</td><td><code>unknown_object</code></td><td><code>unknown_object</code></td></tr>
+<tr><td>7</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>8</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-UnlendOutcome"><code>UnlendOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>unlent</code></td><td><code>unlent</code></td></tr>
+<tr><td>2</td><td><code>not_permitted</code></td><td><code>not_permitted</code></td></tr>
+<tr><td>3</td><td><code>unknown</code></td><td><code>unknown</code></td></tr>
+<tr><td>4</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>5</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h3 id="enum-LendsOutcome"><code>LendsOutcome</code></h3>
+<p class="meta">a member this reader does not know is <code>refuse</code></p>
+<div class="wrap"><table>
+<thead><tr><th>id</th><th>member</th><th>wire</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>page</code></td><td><code>page</code></td></tr>
+<tr><td>2</td><td><code>not_permitted</code></td><td><code>not_permitted</code></td></tr>
+<tr><td>3</td><td><code>invalid</code></td><td><code>invalid</code></td></tr>
+<tr><td>4</td><td><code>unavailable</code></td><td><code>unavailable</code></td></tr>
+</tbody></table></div>
+<h2 id="constants">Constants <span class="tag">[DEF-A6]</span></h2>
+<div class="wrap"><table>
+<thead><tr><th>name</th><th>type</th><th>value</th></tr></thead>
+<tbody>
+<tr><td><code>lending_error_codes</code></td><td><code>list&lt;string&gt;</code></td><td><code>caller_unavailable, identity_required</code></td></tr>
+</tbody></table></div>
+<h2 id="refusals">Refusal words <span class="tag">[DEF-R1]</span></h2>
+<div class="wrap"><table>
+<thead><tr><th>order</th><th>word</th><th>stage</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>malformed</code></td><td><code>grammar</code></td></tr>
+<tr><td>2</td><td><code>bad_string</code></td><td><code>grammar</code></td></tr>
+<tr><td>3</td><td><code>number_spelling</code></td><td><code>grammar</code></td></tr>
+<tr><td>4</td><td><code>wrong_type</code></td><td><code>grammar</code></td></tr>
+<tr><td>5</td><td><code>bad_timestamp</code></td><td><code>grammar</code></td></tr>
+<tr><td>6</td><td><code>depth_exceeded</code></td><td><code>grammar</code></td></tr>
+<tr><td>7</td><td><code>duplicate_key</code></td><td><code>grammar</code></td></tr>
+<tr><td>8</td><td><code>duplicate_field</code></td><td><code>structure</code></td></tr>
+<tr><td>9</td><td><code>unknown_field</code></td><td><code>structure</code></td></tr>
+<tr><td>10</td><td><code>missing_field</code></td><td><code>structure</code></td></tr>
+<tr><td>11</td><td><code>bad_enum</code></td><td><code>structure</code></td></tr>
+<tr><td>12</td><td><code>trailing_bytes</code></td><td><code>document</code></td></tr>
+</tbody></table></div>
+
+<footer>
+<p><a href="index.html">Overview</a> · <a href="cases.html">Cases</a> · <a href="reference.html">Reference</a> · <a href="evidence.html">Evidence</a> · <a href="coverage.html">Coverage</a> · <a href="adopt.html">Adopt</a> ·
+<a href="https://github.com/openabstractions">github.com/openabstractions</a></p>
+</footer>
+</main>
+</html>

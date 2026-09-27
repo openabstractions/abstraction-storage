@@ -11291,9 +11291,9 @@ impl<T: FrameTransport> Manifests for ManifestsClient<T> {
 /// own tables and every designated source.
 pub trait Inventory {
     type Error;
-    /// limit 1..256 manifests plus objects per page. Gated by
-    /// abstraction.storage/inventory.read; each manifest and object is filtered
-    /// through content.read for its digests.
+    /// limit 1..256 combined manifests, stray objects and dangling references
+    /// per page. Gated by abstraction.storage/inventory.read; each manifest and
+    /// object is filtered through content.read for its digests.
     fn list(&self, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error>;
     /// Every hold on one manifest id or digest, re-observed at call time
     /// through each source's Verify: observed holds return as verified or are

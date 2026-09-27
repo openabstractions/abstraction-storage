@@ -272,7 +272,7 @@ export declare const HoldsService: Readonly<{ wireName: "abstraction.storage/hol
 /** What the machine holds and who depends on it, composed from the service's own tables and every designated source. */
 export declare class InventoryClient {
   constructor(transport: FrameTransport);
-  /** limit 1..256 manifests plus objects per page. Gated by abstraction.storage/inventory.read; each manifest and object is filtered through content.read for its digests. */
+  /** limit 1..256 combined manifests, stray objects and dangling references per page. Gated by abstraction.storage/inventory.read; each manifest and object is filtered through content.read for its digests. */
   list(continuation: string, limit: bigint): Promise<InventoryPage>;
   /** Every hold on one manifest id or digest, re-observed at call time through each source's Verify: observed holds return as verified or are omitted; declared holds return as declared. Dangling references naming the target's names are included. */
   holders(target: string): Promise<InventoryPage>;

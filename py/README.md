@@ -1,5 +1,9 @@
 # Content service client
 
+Read and write worked examples are in [../README.md](../README.md#reading-content)
+under Reading content and Writing content. This page covers the Python
+client's own scope, waiting and recovery rules.
+
 Install the current abstraction-storage-content package with the facade storage
 extra and shared IPC package. `Machine().resolve_storage(scope="local")` selects
 one authorized content reader; absence and authorization refusals are explicit.

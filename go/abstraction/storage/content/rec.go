@@ -13612,8 +13612,17 @@ func DescribeEndpoint(frame []byte, program, version string, services ...Describ
 	for i, service := range services {
 		contract, ready, why := service.DescribeService()
 		readiness := "ready"
-		if !ready {
+		if ready {
+			why = ""
+		} else {
 			readiness = "not_ready"
+		}
+		var guarantees []string
+		var capabilities map[string]string
+		if described, ok := service.(interface {
+			DescribeServiceMetadata() ([]string, map[string]string)
+		}); ok {
+			guarantees, capabilities = described.DescribeServiceMetadata()
 		}
 		if i > 0 {
 			out = append(out, ',')
@@ -13622,7 +13631,23 @@ func DescribeEndpoint(frame []byte, program, version string, services ...Describ
 		out = esc(out, contract)
 		out = append(out, ",\"readiness\":\""+readiness+"\",\"why\":"...)
 		out = esc(out, why)
-		out = append(out, ",\"guarantees\":[],\"capabilities\":{}}"...)
+		out = append(out, ",\"guarantees\":["...)
+		for j, guarantee := range guarantees {
+			if j > 0 {
+				out = append(out, ',')
+			}
+			out = esc(out, guarantee)
+		}
+		out = append(out, "],\"capabilities\":{"...)
+		for j, key := range sortedKeys(capabilities) {
+			if j > 0 {
+				out = append(out, ',')
+			}
+			out = esc(out, key)
+			out = append(out, ':')
+			out = esc(out, capabilities[key])
+		}
+		out = append(out, "}}"...)
 	}
 	return serviceReply(v, Raw(append(out, "]}}"...)), nil)
 }
@@ -13815,6 +13840,17 @@ func (d *ContentReaderDispatcher) DescribeService() (contract string, ready bool
 		return "abstraction.storage/content-reader@1", ready, why
 	}
 	return "abstraction.storage/content-reader@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ContentReaderDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -14190,6 +14226,17 @@ func (d *ContentWriterDispatcher) DescribeService() (contract string, ready bool
 	return "abstraction.storage/content-writer@1", true, ""
 }
 
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ContentWriterDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
 func (d *ContentWriterDispatcher) ServiceContract() string {
 	return "abstraction.storage/content-writer@1"
@@ -14524,6 +14571,17 @@ func (d *ContentChangesDispatcher) DescribeService() (contract string, ready boo
 	return "abstraction.storage/content-changes@1", true, ""
 }
 
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ContentChangesDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
 func (d *ContentChangesDispatcher) ServiceContract() string {
 	return "abstraction.storage/content-changes@1"
@@ -14803,6 +14861,17 @@ func (d *HoldsDispatcher) DescribeService() (contract string, ready bool, why st
 		return "abstraction.storage/holds@1", ready, why
 	}
 	return "abstraction.storage/holds@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *HoldsDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -15086,6 +15155,17 @@ func (d *ManifestsDispatcher) DescribeService() (contract string, ready bool, wh
 		return "abstraction.storage/manifests@1", ready, why
 	}
 	return "abstraction.storage/manifests@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ManifestsDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -15410,6 +15490,17 @@ func (d *InventoryDispatcher) DescribeService() (contract string, ready bool, wh
 	return "abstraction.storage/inventory@1", true, ""
 }
 
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *InventoryDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
+}
+
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
 func (d *InventoryDispatcher) ServiceContract() string { return "abstraction.storage/inventory@1" }
 func (d *InventoryDispatcher) WriteFrame(frame []byte) error {
@@ -15697,6 +15788,17 @@ func (d *ContentRemoverDispatcher) DescribeService() (contract string, ready boo
 		return "abstraction.storage/content-remover@1", ready, why
 	}
 	return "abstraction.storage/content-remover@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *ContentRemoverDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
@@ -16019,6 +16121,17 @@ func (d *InventorySourceDispatcher) DescribeService() (contract string, ready bo
 		return "abstraction.storage/inventory-source@1", ready, why
 	}
 	return "abstraction.storage/inventory-source@1", true, ""
+}
+
+// DescribeServiceMetadata returns optional handler display facts for Describe.
+// They grant no authority and do not change service admission.
+func (d *InventorySourceDispatcher) DescribeServiceMetadata() (guarantees []string, capabilities map[string]string) {
+	if h, ok := d.Handler.(interface {
+		DescribeMetadata() ([]string, map[string]string)
+	}); ok {
+		return h.DescribeMetadata()
+	}
+	return nil, nil
 }
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.

@@ -21,6 +21,16 @@ func AbortOutcomeValues() []AbortOutcome { return api.AbortOutcomeValues() }
 
 type AbortResult = api.AbortResult
 
+type Addressing = api.Addressing
+
+const (
+	AddressingContent = api.AddressingContent
+	AddressingName    = api.AddressingName
+)
+
+// AddressingValues returns every member of Addressing in declaration order, in a new slice.
+func AddressingValues() []Addressing { return api.AddressingValues() }
+
 type AppendOutcome = api.AppendOutcome
 
 const (
@@ -37,6 +47,19 @@ const (
 func AppendOutcomeValues() []AppendOutcome { return api.AppendOutcomeValues() }
 
 type AppendResult = api.AppendResult
+
+type Attestation = api.Attestation
+
+const (
+	AttestationDeclared = api.AttestationDeclared
+	AttestationObserved = api.AttestationObserved
+	AttestationVerified = api.AttestationVerified
+)
+
+// AttestationValues returns every member of Attestation in declaration order, in a new slice.
+func AttestationValues() []Attestation { return api.AttestationValues() }
+
+type Basis = api.Basis
 
 type BeginOutcome = api.BeginOutcome
 
@@ -113,6 +136,10 @@ func CommitOutcomeValues() []CommitOutcome { return api.CommitOutcomeValues() }
 
 type CommitResult = api.CommitResult
 
+type Dangling = api.Dangling
+
+type Entry = api.Entry
+
 type Evidence = api.Evidence
 
 const (
@@ -124,6 +151,34 @@ const (
 
 // EvidenceValues returns every member of Evidence in declaration order, in a new slice.
 func EvidenceValues() []Evidence { return api.EvidenceValues() }
+
+type Hold = api.Hold
+
+type Holder = api.Holder
+
+type InventoryOutcome = api.InventoryOutcome
+
+const (
+	InventoryOutcomePage        = api.InventoryOutcomePage
+	InventoryOutcomeGap         = api.InventoryOutcomeGap
+	InventoryOutcomeForbidden   = api.InventoryOutcomeForbidden
+	InventoryOutcomeInvalid     = api.InventoryOutcomeInvalid
+	InventoryOutcomeUnavailable = api.InventoryOutcomeUnavailable
+)
+
+// InventoryOutcomeValues returns every member of InventoryOutcome in declaration order, in a new slice.
+func InventoryOutcomeValues() []InventoryOutcome { return api.InventoryOutcomeValues() }
+
+type Lifetime = api.Lifetime
+
+const (
+	LifetimeUntilReleased = api.LifetimeUntilReleased
+	LifetimeLease         = api.LifetimeLease
+	LifetimeWhilePresent  = api.LifetimeWhilePresent
+)
+
+// LifetimeValues returns every member of Lifetime in declaration order, in a new slice.
+func LifetimeValues() []Lifetime { return api.LifetimeValues() }
 
 type ListingOutcome = api.ListingOutcome
 
@@ -139,6 +194,12 @@ const (
 func ListingOutcomeValues() []ListingOutcome { return api.ListingOutcomeValues() }
 
 type ListingPage = api.ListingPage
+
+type Manifest = api.Manifest
+
+type Name = api.Name
+
+type Object = api.Object
 
 type OpenOutcome = api.OpenOutcome
 
@@ -156,6 +217,16 @@ const (
 func OpenOutcomeValues() []OpenOutcome { return api.OpenOutcomeValues() }
 
 type OpenResult = api.OpenResult
+
+type Placement = api.Placement
+
+const (
+	PlacementLocal  = api.PlacementLocal
+	PlacementRemote = api.PlacementRemote
+)
+
+// PlacementValues returns every member of Placement in declaration order, in a new slice.
+func PlacementValues() []Placement { return api.PlacementValues() }
 
 type ReadOutcome = api.ReadOutcome
 
@@ -190,6 +261,21 @@ const (
 
 // ServiceErrorCodeValues returns every member of ServiceErrorCode in declaration order, in a new slice.
 func ServiceErrorCodeValues() []ServiceErrorCode { return api.ServiceErrorCodeValues() }
+
+type StoreError = api.StoreError
+
+type StoreErrorKind = api.StoreErrorKind
+
+const (
+	StoreErrorKindOther                   = api.StoreErrorKindOther
+	StoreErrorKindMalformedIndex          = api.StoreErrorKindMalformedIndex
+	StoreErrorKindUnreadableIndex         = api.StoreErrorKindUnreadableIndex
+	StoreErrorKindUnreadableTree          = api.StoreErrorKindUnreadableTree
+	StoreErrorKindUnreadableConfiguration = api.StoreErrorKindUnreadableConfiguration
+)
+
+// StoreErrorKindValues returns every member of StoreErrorKind in declaration order, in a new slice.
+func StoreErrorKindValues() []StoreErrorKind { return api.StoreErrorKindValues() }
 
 type Verification = api.Verification
 
