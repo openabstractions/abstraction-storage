@@ -113,7 +113,12 @@ func decide(ctx context.Context, scope string, policy Policy, peer *identity.Pee
 	if ctx.Err() != nil {
 		return "unavailable"
 	}
-	err := policy(ctx, peer, digest)
+	return policyStatus(ctx, policy(ctx, peer, digest))
+}
+
+// policyStatus maps a policy result: "" permits, unavailable for a failed
+// lookup or ended context, forbidden for every other refusal.
+func policyStatus(ctx context.Context, err error) string {
 	if ctx.Err() != nil || errors.Is(err, ErrPolicyUnavailable) {
 		return "unavailable"
 	}

@@ -1,5 +1,7 @@
 # Installed C++ content reader fixture
 
+*For maintainers running the C++ storage tests.*
+
 Build/install abstraction-storage/cpp into a temporary prefix with
 `ABSTRACTION_STORAGE_BUILD_SERVICE=ON` and
 `ABSTRACTION_STORAGE_BUILD_LEGACY=OFF`. Configure this external consumer with that

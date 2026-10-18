@@ -114,7 +114,8 @@ package's own independent build.
 
 - **[STO-W1] Class at commit.** A committed object is `cache` until a hold
   names it; `Begin` MUST NOT carry a class. Lands with `holds@1` (see
-  [Not built](#not-built)).
+  [Not built](#not-built)). Request input written under an input profile is
+  `tmp` under `STO-T7`.
 - **[STO-W2] Separate write policy.** `EnableWriter(policy, limit)` MUST
   register a write policy separate from the read policy; a read permit MUST
   grant no write. The configured provider MUST implement `Store`, `Local`
@@ -145,7 +146,14 @@ package's own independent build.
   return `conflict` with zero provider effects. Another live upload of the
   same digest MUST return `busy`. An existing provider naming match MUST
   return `present` with `evidence=named`, an unverified naming claim.
-  Content addressing keeps one object per digest.
+  Content addressing keeps one object per digest. A write policy MAY permit
+  `Begin` only on proof of the bytes (`ErrRequireBytes`); such a writer
+  MUST NOT be answered `present`, nor a recorded `present` replayed for it.
+  `Begin` answers `started` whether or not the object exists, and the
+  upload stages and verifies every byte. For an existing object it stages
+  beside the writer's records, and `Commit` publishes nothing new: it
+  reports `committed` with `hashed` evidence, keeps the stored bytes and
+  journals no `added`. Startup removes such staging left by a crash.
 - **[STO-W7] Writer limits and expiry.** The service MUST hold at most 16
   uploads globally, four per subject and 256 request records. An upload
   MUST expire after 30 idle seconds; expiry, `Abort`, a mismatch and
@@ -178,6 +186,45 @@ package's own independent build.
   starts a new upload. A retry after a completed publish MUST read
   `committed` with `hashed` evidence whether or not any later save
   succeeds.
+- **[STO-W11] Each write decision names its call.** The writer MUST pass
+  the write policy the call it decides: `Begin`, `Append` or `Commit`
+  before verification, each with the declared size. After `Commit` has
+  matched every byte to the digest, and before it records or publishes
+  anything, the writer MUST decide the call once more as publication,
+  carrying the first 512 verified bytes and whether the store already held
+  the object. A refusal at publication MUST
+  publish nothing and MUST leave the upload live until its idle expiry, as
+  a refusal before verification does. A policy that ignores the call
+  decides by digest alone. Go: `service.WriteCallFrom`, `WithWriteCall`.
+- **[STO-W12] Request input under an input profile.** Content an
+  application uploads as the input of a request is written under an input
+  profile: `input:image` for an edit input, an edit mask, a vision image or
+  a video's first frame (PNG, JPEG, GIF or WebP), and `input:audio` for
+  audio to transcribe (WAV, MP3, MP4, WebM, Ogg or FLAC). An application
+  holds a profile with both `abstraction.storage/content.write` and
+  `abstraction.storage/content.read` on its resource. An exact-digest
+  `content.write` rule MUST decide first; only its absence lets a profile
+  decide, and an explicit denial or a policy outage MUST NOT fall back to a
+  profile. Before verification, holding either profile admits the upload
+  only on proof of the bytes (`STO-W6`): a profile writer learns nothing
+  from presence and never gains a read it did not earn by supplying the
+  bytes. At publication the verified bytes name the one profile that MUST
+  be held; bytes that fit neither are refused. The runtime MUST durably
+  record the original account, proven program, digest and profile before
+  publication; a failed record refuses with `unavailable`. The record owns
+  the object only when its own write published the bytes; a write that
+  proved bytes the store already held owns nothing. The record authorizes
+  only a read the runtime makes for a request the same subject starts that
+  consumes the recorded profile (image input for an image edit, vision or
+  video request, audio for transcription), while that subject holds
+  `content.read` on that profile, rechecked on each access. A direct
+  `content-reader@1` `Open` and every other subject gain nothing from it.
+  The gateway window's own storage of uploaded bytes follows the same rule,
+  deciding ownership under the store lock it publishes under. The grant is
+  evaluated where the store lives, for the subject that machine binds: a
+  delegated request carries only the digest to a remote runtime, which
+  reads its own store under its own records (`abstraction-inference`
+  INF-V3), and no binding or record crosses machines.
 
 Go `client.NewWriter`, `NewRequestID` and `Writer.Begin/Append/Commit/Abort`
 validate result invariants; `Writer.Write` resumes by identity, follows
@@ -251,10 +298,11 @@ Go `client.Changes` (`Observe`, `List`, `Snapshot`) and C++
   given reports nothing here.
 - **[STO-I2] The composition owns freezing and rewriting.** Everything on a
   page besides freezing, paging, store acceptance and the holder rewrite is
-  what a source supplied, unchanged. An empty continuation MUST drain every
-  source's `Snapshot` once and freeze the result with the change cursor of
-  that moment; pages are the frozen records in source order, then store and
-  id order. The service MUST retain at most eight compositions, each for 30
+  what a source supplied, unchanged. An empty continuation for `List` MUST
+  drain every source's `Snapshot` once; `ListStore` MUST drain only sources
+  accepted for its exact store. Each freezes the result with the change
+  cursor of that moment; pages are the frozen records in source order, then
+  store and id order. The service MUST retain at most eight compositions, each for 30
   idle seconds and bound to the caller subject; an unknown or expired one
   MUST return `gap`, another subject's MUST return `forbidden`.
 - **[STO-I3] Page bound and outage.** `limit` counts manifests, stray
@@ -291,16 +339,31 @@ Go `client.Changes` (`Observe`, `List`, `Snapshot`) and C++
   keeps no declared-hold table and no observation history, so `Unheld` MUST
   return `unavailable` rather than report content as unheld on one reading.
   `grace_ms` and `audit_retention_ms` MUST be zero on every page.
+- **[STO-I9] Store-scoped List avoids unrelated sources.** `ListStore(store,
+  continuation, limit)` MUST authorize before reading a source, then invoke
+  only designated sources whose accepted store set includes the exact
+  requested store. A store not designated MUST return `invalid` without
+  invoking any source. Records and the first-page store record MUST be
+  filtered to that exact store; dangling references are omitted because they
+  do not identify a store. The frozen continuation MUST bind both caller and
+  store. The global `List` behavior is unchanged.
 
 Cross-account content grants, public release pins, remote transports and
 macOS native Program proof remain separate obligations. Generated inference
-output uses bounded, original-subject publication grants on `output:speech`
-and `output:live` under `abstraction.storage/content.write`: the runtime
-preflights the grant before upstream work and returns a single-use internal
-commit capability, and `Commit` rechecks the same resource for revocation,
-verifies digest and size, then commits through the shared content store.
-These grants authorize that generated output; digest-scoped uploads and
-content reads retain their own policy checks.
+output uses bounded, original-subject grants on `output:speech`,
+`output:live`, `output:image` and `output:video` under both
+`abstraction.storage/content.write` and `abstraction.storage/content.read`.
+The runtime preflights both grants before upstream work and returns a
+single-use internal commit capability. Commit rechecks both resources for
+revocation, verifies digest and size, and commits through the shared content
+store. It durably records the original account, proven program, digest and
+output profile before publication; a failed provenance write withholds the
+result. The record is a publication fact, not a copied right. On Open and
+each Read, an exact-digest permit authorizes access, while an absent exact
+rule permits a matching generated output only under its current profile read
+grant. Explicit digest denial or policy outage never falls back to profile
+permission. Digest-scoped uploads gain no read authority from a write.
+Request input mirrors this on the input profiles of `STO-W12`.
 
 ## Retention
 
@@ -324,6 +387,22 @@ S12 in the same commit that adds these ids.
   space (15% of the file system, capped at 4G).
 - **[STO-T6] Record.** Each removal MUST be one log record naming class,
   key and level.
+- **[STO-T7] Request input is `tmp`.** An object a request input record
+  owns (`STO-W12`) is `tmp`. Its lifetime rule holds it while any recorded
+  writer's identity retention lasts (`STO-W8`, ten minutes after that
+  writer's last write or a `Begin` naming the digest) and while a request
+  or job that has not reached its terminal state names it
+  (`abstraction-inference` INF-V4). When the rule ends the runtime MUST
+  remove the record, and the object too unless generated-output provenance
+  names it or an exact-digest write named it. An exact-digest write marks
+  the digest whether or not request input has named it yet. Each sweep
+  reads every holder once; a holder that cannot answer, a job whose input
+  cannot be decoded included, keeps every object for that sweep. Each
+  removal leaves one `STO-T6` record. A store that serves
+  `content-changes@1` reports the removal at its next listing (`STO-O3`);
+  the runtime's own store serves none. A request that starts after the
+  decision may read the object as `not_found`; the application uploads it
+  again. Until the collector exists, the runtime looks once a minute.
 
 `abstraction-logging/CONTRACT.md` `LOG-S14`, `abstraction-config/CONTRACT.md`
 `CFG-R4` and `CFG-S2`, and `abstraction-download/CONTRACT.md` `DL-R37`
@@ -370,7 +449,9 @@ at most eight snapshots, each 30 idle seconds. Inventory: at most 65536
 records per composition, at most eight compositions, each 30 idle seconds.
 Retention: low free space is 15% of the file system capped at 4G; the
 collector runs daily and under that pressure; `tmp_max_retention` defaults
-`10d`; `logs_max_use` defaults 10% of the file system capped at 4G.
+`10d`; `logs_max_use` defaults 10% of the file system capped at 4G. Request
+input: 512 head bytes at publication, records of at most 64 KiB per digest,
+a sweep once a minute.
 
 ## Divergences
 

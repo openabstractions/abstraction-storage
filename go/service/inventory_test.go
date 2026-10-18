@@ -148,6 +148,60 @@ func TestComposedInventoryPagesStoresThenRecords(t *testing.T) {
 	}
 }
 
+func TestStoreScopedListReadsOnlyDesignatedSourcesForThatStore(t *testing.T) {
+	selected := &fakeSource{pages: []api.SourcePage{sourcePage(
+		[]api.Store{store("approved", "inventoryd"), store("same-source-other", "inventoryd")},
+		[]api.ManifestHolders{
+			namedManifest("approved", "m1", "models/one.gguf"),
+			namedManifest("same-source-other", "m2", "other/two.gguf"),
+			namedManifest("approved", "m3", "models/three.gguf"),
+		},
+		[]api.ObjectHolders{strayObject("same-source-other", "other-object", "")},
+		[]api.Dangling{{Holder: api.Holder{Program: "inventoryd"}, Basis: api.Basis{Index: "i", Key: "k"}, Reference: "unscoped"}}, "")}}
+	unrelated := &fakeSource{err: errors.New("unrelated source must not be read")}
+	c := composedReceiver(
+		DesignatedSource{Program: "/bin/inventoryd", Stores: []string{"approved", "same-source-other"}, Reader: selected},
+		DesignatedSource{Program: "/bin/ollama", Stores: []string{"unrelated"}, Reader: unrelated},
+	)
+
+	first := must(c.ListStore("approved", "", 1))
+	if first.Outcome != api.InventoryOutcomePage || len(first.Stores) != 1 || first.Stores[0].Name != "approved" ||
+		len(first.Manifests) != 1 || first.Manifests[0].Manifest.ID != "m1" || len(first.Objects) != 0 || len(first.Dangling) != 0 || first.Complete {
+		t.Fatalf("first scoped page %+v", first)
+	}
+	second := must(c.ListStore("approved", first.Continuation, 1))
+	if second.Outcome != api.InventoryOutcomePage || len(second.Stores) != 0 || len(second.Manifests) != 1 ||
+		second.Manifests[0].Manifest.ID != "m3" || !second.Complete {
+		t.Fatalf("second scoped page %+v", second)
+	}
+	if len(selected.requests) != 1 || selected.requests[0] != "" {
+		t.Fatalf("selected store source requests %v", selected.requests)
+	}
+	if len(unrelated.requests) != 0 {
+		t.Fatalf("unrelated source was read: %v", unrelated.requests)
+	}
+	if crossStore := must(c.ListStore("same-source-other", first.Continuation, 1)); crossStore.Outcome != api.InventoryOutcomeForbidden {
+		t.Fatalf("continuation was not bound to its store: %+v", crossStore)
+	}
+	if len(selected.requests) != 1 || len(unrelated.requests) != 0 {
+		t.Fatalf("continuation replay read a source: selected=%v unrelated=%v", selected.requests, unrelated.requests)
+	}
+}
+
+func TestStoreScopedListUnknownStoreDoesNotReadSources(t *testing.T) {
+	source := &fakeSource{err: errors.New("unregistered source must not be read")}
+	c := composedReceiver(DesignatedSource{Program: "/bin/inventoryd", Stores: []string{"approved"}, Reader: source})
+	if page := must(c.ListStore("not-approved", "", 8)); page.Outcome != api.InventoryOutcomeInvalid {
+		t.Fatalf("unknown store %+v", page)
+	}
+	if len(source.requests) != 0 {
+		t.Fatalf("unknown store read a source: %v", source.requests)
+	}
+	if page := must(c.ListStore("", "", 8)); page.Outcome != api.InventoryOutcomeInvalid {
+		t.Fatalf("empty store %+v", page)
+	}
+}
+
 // A store the source could not read entirely reports its errors on its own
 // Store record, and everything else it read is still listed.
 func TestOneStoreErrorTravelsOnItsStoreRecord(t *testing.T) {
@@ -242,7 +296,7 @@ func TestTheInventoryGateRefusesWithEmptyLists(t *testing.T) {
 	denied := func(context.Context, *identity.Peer, string) error { return errors.New("no rule") }
 	c := receiverWith(permit, denied, DesignatedSource{Program: "/bin/inventoryd", Stores: []string{"lmstudio"}, Reader: source})
 
-	for _, page := range []api.InventoryPage{must(c.List("", 8)), must(c.Find(digestA)), must(c.Holders("m1"))} {
+	for _, page := range []api.InventoryPage{must(c.List("", 8)), must(c.ListStore("lmstudio", "", 8)), must(c.Find(digestA)), must(c.Holders("m1"))} {
 		if page.Outcome != api.InventoryOutcomeForbidden || len(page.Manifests) != 0 || len(page.Stores) != 0 ||
 			page.Continuation != "" || page.Cursor != "" || page.Complete {
 			t.Fatalf("refusal %+v", page)

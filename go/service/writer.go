@@ -23,6 +23,10 @@ const MaxUploadsPerScope = 4
 const MaxRequestRecords = 256
 const MaxAppendBytes = 65536
 
+// possessionPattern names the staging files of uploads that prove bytes the
+// store already holds (STO-W6). Startup removes every leftover one.
+const possessionPattern = "possession-*.part"
+
 // RequestRetention bounds how long a request identity is remembered after its
 // last Begin, Commit or present result, across provider restarts.
 const RequestRetention = 10 * time.Minute
@@ -47,6 +51,13 @@ type upload struct {
 	size, received int64
 	ready, done    bool
 	expires        time.Time
+	// head keeps the first HeadBytes accepted bytes for the WritePublish
+	// decision (STO-W11).
+	head []byte
+	// requireBytes: the policy permitted Begin only on proof of the bytes.
+	// existing: the object was already stored at Begin; the upload stages in
+	// a possession file beside the writer's records and publishes nothing.
+	requireBytes, existing bool
 }
 
 // discard releases the staged bytes and returns what failed. The caller has
@@ -134,6 +145,13 @@ func newWriters(store WritableStore, policy Policy, limit int64, records casapi.
 	if err := w.load(); err != nil {
 		return nil, err
 	}
+	// A possession file outlives no provider lifetime: the bytes it staged
+	// were already stored, and its upload cannot resume (STO-W6, STO-W9).
+	if leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(recordPath), possessionPattern)); err == nil {
+		for _, path := range leftovers {
+			w.unreported = errors.Join(w.unreported, removeStaged(path))
+		}
+	}
 	return w, nil
 }
 
@@ -218,8 +236,27 @@ type writeReceiver struct {
 	ctx     context.Context
 }
 
-func (c writeReceiver) authorization(digest string) string {
-	return decide(c.ctx, c.scope, c.writers.policy, c.peer, digest)
+// authorization decides one writer call; the policy reads call from its
+// context (STO-W11).
+func (c writeReceiver) authorization(digest string, call WriteCall) string {
+	return decide(WithWriteCall(c.ctx, call), c.scope, c.writers.policy, c.peer, digest)
+}
+
+// beginAuthorization decides Begin. A policy answering ErrRequireBytes
+// permits it on proof of the bytes (STO-W6, STO-W12).
+func (c writeReceiver) beginAuthorization(digest string, size int64) (string, bool) {
+	if c.scope == "" {
+		return "forbidden", false
+	}
+	ctx := WithWriteCall(c.ctx, WriteCall{Stage: WriteBegin, Size: size})
+	if ctx.Err() != nil {
+		return "unavailable", false
+	}
+	err := c.writers.policy(ctx, c.peer, digest)
+	if errors.Is(err, ErrRequireBytes) && ctx.Err() == nil {
+		return "", true
+	}
+	return policyStatus(ctx, err), false
 }
 
 func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResult, error) {
@@ -231,7 +268,8 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 	if !validRequest(request) || !validDigest(digest) || size < 0 {
 		return api.BeginResult{Outcome: api.BeginOutcomeInvalid}, nil
 	}
-	if status := c.authorization(digest); status != "" {
+	status, requireBytes := c.beginAuthorization(digest, size)
+	if status != "" {
 		return api.BeginResult{Outcome: beginOutcome(status)}, nil
 	}
 	if size > w.limit {
@@ -249,6 +287,11 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 		if rec.digest != digest || rec.size != size {
 			w.mu.Unlock()
 			return result(api.BeginOutcomeConflict)
+		}
+		// A writer that must prove the bytes gets no replay of a present
+		// answer; its upload starts anew (STO-W6).
+		if rec.stored != nil && rec.handle == "" && requireBytes && rec.stored.Evidence == api.EvidenceNamed {
+			rec.stored = nil
 		}
 		if rec.stored != nil && rec.handle == "" {
 			stored := *rec.stored
@@ -307,7 +350,7 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 		w.mu.Unlock()
 		return unavailable, nil
 	}
-	u := &upload{handle: hex.EncodeToString(nonce[:]), key: key, digest: digest, scope: c.scope, size: size}
+	u := &upload{handle: hex.EncodeToString(nonce[:]), key: key, digest: digest, scope: c.scope, size: size, requireBytes: requireBytes}
 	w.uploads[u.handle], w.digests[digest] = u, u
 	created := rec == nil
 	if created {
@@ -372,10 +415,20 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 
 // prepare runs trusted provider callbacks outside the writer mutex. It creates
 // only a staging file at the provider's reservation, which Find never reports.
+// An upload that must prove its bytes stages an object already stored in a
+// possession file beside the writer's records instead (STO-W6).
 func (c writeReceiver) prepare(u *upload) (string, *os.File, string, storage.Ref) {
 	store := c.writers.store
 	if found, ok := store.Find(u.digest); ok {
-		return "present", nil, "", found
+		if !u.requireBytes {
+			return "present", nil, "", found
+		}
+		f, e := os.CreateTemp(filepath.Dir(c.writers.recordPath), possessionPattern)
+		if e != nil {
+			return "unavailable", nil, "", storage.Ref{}
+		}
+		u.existing = true
+		return "", f, f.Name(), found
 	}
 	ref, e := store.Place(u.digest, u.size)
 	if errors.Is(e, storage.ErrReadOnly) {
@@ -435,7 +488,7 @@ func (c writeReceiver) Append(handle string, offset int64, data []byte) (api.App
 	if u == nil {
 		return result(appendOutcome(status), 0)
 	}
-	if status := c.authorization(u.digest); status != "" {
+	if status := c.authorization(u.digest, WriteCall{Stage: WriteAppend, Size: u.size}); status != "" {
 		return result(appendOutcome(status), 0)
 	}
 	w := c.writers
@@ -478,6 +531,9 @@ func (c writeReceiver) Append(handle string, offset int64, data []byte) (api.App
 		w.failed(cleanup)
 		return result(api.AppendOutcomeUnavailable, 0)
 	}
+	if missing := HeadBytes - len(u.head); missing > 0 {
+		u.head = append(u.head, data[:min(missing, len(data))]...)
+	}
 	u.received += int64(n)
 	return result(api.AppendOutcomeAccepted, u.received)
 }
@@ -494,7 +550,7 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 	if u == nil {
 		return result(commitOutcome(status))
 	}
-	if status := c.authorization(u.digest); status != "" {
+	if status := c.authorization(u.digest, WriteCall{Stage: WriteCommit, Size: u.size}); status != "" {
 		return result(commitOutcome(status))
 	}
 	w := c.writers
@@ -529,6 +585,16 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 	if "sha256:"+hex.EncodeToString(u.sum.Sum(nil)) != u.digest {
 		return drop("mismatch", true)
 	}
+	// The verified bytes are decided once more before anything is recorded or
+	// published (STO-W11). A refusal keeps the upload to its idle expiry, as a
+	// refusal before verification does.
+	existing := u.existing
+	if !existing {
+		_, existing = w.store.Find(u.digest)
+	}
+	if status := c.authorization(u.digest, WriteCall{Stage: WritePublish, Size: u.size, Head: append([]byte(nil), u.head...), Existing: existing}); status != "" {
+		return result(commitOutcome(status))
+	}
 	if e := u.file.Sync(); e != nil {
 		return drop("unavailable", false)
 	}
@@ -555,10 +621,19 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 		return drop("unavailable", false)
 	}
 	w.mu.Unlock()
-	published := w.store.Commit(u.ref) == nil
-	if published {
+	var published bool
+	if u.existing {
+		// The proved bytes are the stored object's; nothing new is published,
+		// and the possession file goes (STO-W6).
+		w.failed(removeStaged(u.path))
 		found, ok := w.store.Find(u.digest)
 		published = ok && found.Digest == u.digest
+	} else {
+		published = w.store.Commit(u.ref) == nil
+		if published {
+			found, ok := w.store.Find(u.digest)
+			published = ok && found.Digest == u.digest
+		}
 	}
 	if !published {
 		w.mu.Lock()
@@ -578,7 +653,7 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 	w.unlink(u, false)
 	committed := w.onCommitted
 	w.mu.Unlock()
-	if committed != nil {
+	if committed != nil && !u.existing {
 		committed(u.digest, u.size)
 	}
 	return api.CommitResult{Outcome: api.CommitOutcomeCommitted, Stored: &stored}, nil

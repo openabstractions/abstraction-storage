@@ -1,5 +1,7 @@
 # Content service client
 
+*For Python applications.*
+
 Read and write worked examples are in [../README.md](../README.md#reading-content)
 under Reading content and Writing content. This page covers the Python
 client's own scope, waiting and recovery rules.

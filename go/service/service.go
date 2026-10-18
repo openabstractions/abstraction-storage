@@ -20,27 +20,52 @@ import (
 const MaxFrameBytes = 1 << 20
 
 type Host struct {
+	*Component
+	listener  listen.Listener
+	once      sync.Once
+	workers   sync.WaitGroup
+	slots     chan struct{}
+	OnStopped func()
+}
+
+// Component owns storage policy, handles, uploads, and optional profiles for
+// one provider lifetime. A caller may serve its dispatchers on an existing
+// authenticated framed endpoint.
+type Component struct {
 	registry  *registry
 	writers   *writers
 	changes   *changeJournal
 	inventory *inventory
 	interval  time.Duration
-	listener  listen.Listener
 	owner     string
 	ctx       context.Context
 	cancel    context.CancelFunc
 	once      sync.Once
 	lifecycle sync.Mutex
 	serving   bool
+	stopStart func() bool
 	workers   sync.WaitGroup
-	slots     chan struct{}
 	OnError   func(error)
-	OnStopped func()
 }
 
 // Listen owns no Store configuration. Policy is mandatory and never replaced by
 // a same-account blanket grant. Configure callbacks before Serve.
 func Listen(endpoint string, store storage.Store, policy Policy) (*Host, error) {
+	component, e := NewComponent(store, policy)
+	if e != nil {
+		return nil, e
+	}
+	l, e := listen.ListenFramed(endpoint, listen.Program)
+	if e != nil {
+		component.Close()
+		return nil, e
+	}
+	return &Host{Component: component, listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 32}), slots: make(chan struct{}, 32)}, nil
+}
+
+// NewComponent requires an explicit store and read policy. The principal is
+// captured from the service account and checked against every framed peer.
+func NewComponent(store storage.Store, policy Policy) (*Component, error) {
 	if store == nil || policy == nil {
 		return nil, errors.New("storage: explicit store and content policy required")
 	}
@@ -51,22 +76,30 @@ func Listen(endpoint string, store storage.Store, policy Policy) (*Host, error) 
 	if owner.Uid == "" {
 		return nil, errors.New("storage: service principal unavailable")
 	}
-	l, e := listen.ListenFramed(endpoint, listen.Program)
-	if e != nil {
-		return nil, e
-	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Host{registry: newRegistry(store, policy), listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 32}), owner: owner.Uid, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 32)}, nil
+	return &Component{registry: newRegistry(store, policy), owner: owner.Uid, ctx: ctx, cancel: cancel}, nil
 }
 func (h *Host) Close() error {
 	var e error
 	h.once.Do(func() {
-		h.cancel()
 		e = h.listener.Close()
-		h.registry.close()
-		h.lifecycle.Lock()
-		writers, changes, composed := h.writers, h.changes, h.inventory
-		h.lifecycle.Unlock()
+		h.Component.Close()
+	})
+	return e
+}
+
+// Close stops admission and closes retained handles and staging files.
+func (c *Component) Close() error {
+	c.once.Do(func() {
+		c.cancel()
+		c.registry.close()
+		c.lifecycle.Lock()
+		writers, changes, composed := c.writers, c.changes, c.inventory
+		stopStart := c.stopStart
+		c.lifecycle.Unlock()
+		if stopStart != nil {
+			stopStart()
+		}
 		if writers != nil {
 			writers.close()
 		}
@@ -77,7 +110,8 @@ func (h *Host) Close() error {
 			composed.close()
 		}
 	})
-	return e
+	c.workers.Wait()
+	return nil
 }
 
 // EnableChanges adds abstraction.storage/content-changes@1 to this endpoint.
@@ -86,7 +120,7 @@ func (h *Host) Close() error {
 // of a Lister provider are recorded without being journaled, and the provider is
 // polled every interval for external additions and deletions. capacity bounds
 // the journal. Configure it before Serve.
-func (h *Host) EnableChanges(observe Policy, interval time.Duration, capacity int) error {
+func (h *Component) EnableChanges(observe Policy, interval time.Duration, capacity int) error {
 	h.lifecycle.Lock()
 	defer h.lifecycle.Unlock()
 	if h.serving || h.ctx.Err() != nil {
@@ -104,7 +138,7 @@ func (h *Host) EnableChanges(observe Policy, interval time.Duration, capacity in
 }
 
 // ChangesAvailable reports whether change observation is configured and serving.
-func (h *Host) ChangesAvailable() bool {
+func (h *Component) ChangesAvailable() bool {
 	h.lifecycle.Lock()
 	defer h.lifecycle.Unlock()
 	return h.changes != nil && h.ctx.Err() == nil
@@ -116,7 +150,7 @@ func (h *Host) ChangesAvailable() bool {
 // records is service-owned atomic state at the absolute recordPath; this host
 // must be its only writer. Existing identities are restored and staging left by
 // their unfinished uploads is removed before this returns.
-func (h *Host) EnableWriter(policy Policy, limit int64, records casapi.Store, recordPath string) error {
+func (h *Component) EnableWriter(policy Policy, limit int64, records casapi.Store, recordPath string) error {
 	h.lifecycle.Lock()
 	defer h.lifecycle.Unlock()
 	if h.serving || h.ctx.Err() != nil {
@@ -145,41 +179,14 @@ func (h *Host) EnableWriter(policy Policy, limit int64, records casapi.Store, re
 }
 
 // WriterAvailable reports whether the writer profile is configured and serving.
-func (h *Host) WriterAvailable() bool {
+func (h *Component) WriterAvailable() bool {
 	h.lifecycle.Lock()
 	defer h.lifecycle.Unlock()
 	return h.writers != nil && h.ctx.Err() == nil
 }
 func (h *Host) Serve(ctx context.Context) error {
-	h.lifecycle.Lock()
-	if h.serving {
-		h.lifecycle.Unlock()
-		return errors.New("storage: host already served")
-	}
-	h.serving = true
-	writers, changes, interval, composed := h.writers, h.changes, h.interval, h.inventory
-	h.lifecycle.Unlock()
-	if writers != nil && changes != nil {
-		writers.mu.Lock()
-		writers.onCommitted = changes.committed
-		writers.mu.Unlock()
-	}
-	if changes != nil {
-		h.workers.Add(1)
-		go func() {
-			defer h.workers.Done()
-			ticker := time.NewTicker(interval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-h.ctx.Done():
-					return
-				case <-ticker.C:
-					changes.poll()
-					changes.sweep()
-				}
-			}
-		}()
+	if err := h.Component.Start(ctx); err != nil {
+		return err
 	}
 	stop := context.AfterFunc(ctx, func() { h.Close() })
 	defer stop()
@@ -188,26 +195,6 @@ func (h *Host) Serve(ctx context.Context) error {
 	defer func() {
 		if h.OnStopped != nil {
 			h.OnStopped()
-		}
-	}()
-	h.workers.Add(1)
-	go func() {
-		defer h.workers.Done()
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-h.ctx.Done():
-				return
-			case <-ticker.C:
-				h.registry.sweep()
-				if writers != nil {
-					writers.sweep()
-				}
-				if composed != nil {
-					composed.sweep()
-				}
-			}
 		}
 	}()
 	for {
@@ -229,7 +216,6 @@ func (h *Host) Serve(ctx context.Context) error {
 			defer h.workers.Done()
 			defer func() { <-h.slots }()
 			defer conn.Close()
-			// Change observation may wait up to 30 seconds; other calls finish well within this budget.
 			callCtx, cancel := context.WithTimeout(h.ctx, 35*time.Second)
 			defer cancel()
 			call, e := listen.ReceiveFramed(callCtx, conn, listen.Program, MaxFrameBytes)
@@ -237,24 +223,8 @@ func (h *Host) Serve(ctx context.Context) error {
 				defer call.Close()
 			}
 			if e == nil {
-				peer, proofErr := call.Peer()
-				scope := ""
-				if proofErr == nil {
-					scope = callerScope(peer, h.owner)
-				}
-				// Only the configured services are served; any other reads unknown_service.
-				services := []api.ServedService{&api.ContentReaderDispatcher{Handler: receiver{registry: h.registry, scope: scope, peer: peer, ctx: callCtx}}}
-				if writers != nil {
-					services = append(services, &api.ContentWriterDispatcher{Handler: writeReceiver{writers: writers, scope: scope, peer: peer, ctx: callCtx}})
-				}
-				if changes != nil {
-					services = append(services, &api.ContentChangesDispatcher{Handler: changesReceiver{journal: changes, scope: scope, peer: peer, ctx: callCtx, wait: call.WaitContext()}})
-				}
-				if composed != nil {
-					services = append(services, &api.InventoryDispatcher{Handler: inventoryReceiver{inventory: composed, scope: scope, peer: peer, ctx: callCtx}})
-				}
 				var reply []byte
-				reply, e = api.ServeEndpoint(call.Frame, "openabstractions", "", services...)
+				reply, e = api.ServeEndpoint(call.Frame, "openabstractions", "", h.Component.Services(call, callCtx)...)
 				if e == nil {
 					e = call.Reply(reply)
 				}
@@ -264,6 +234,111 @@ func (h *Host) Serve(ctx context.Context) error {
 			}
 		}()
 	}
+}
+
+// Start begins expiration and change polling for this component lifetime.
+// Close joins the background workers. A cancelled parent closes the component.
+func (h *Component) Start(ctx context.Context) error {
+	h.lifecycle.Lock()
+	if h.serving {
+		h.lifecycle.Unlock()
+		return errors.New("storage: component already started")
+	}
+	if h.ctx.Err() != nil || ctx == nil || ctx.Err() != nil {
+		h.lifecycle.Unlock()
+		return errors.New("storage: component closed or context cancelled")
+	}
+	h.serving = true
+	writers, changes, interval, composed := h.writers, h.changes, h.interval, h.inventory
+	h.workers.Add(1)
+	if changes != nil {
+		h.workers.Add(1)
+	}
+	h.stopStart = context.AfterFunc(ctx, func() { h.Close() })
+	h.lifecycle.Unlock()
+	if writers != nil && changes != nil {
+		writers.mu.Lock()
+		writers.onCommitted = changes.committed
+		writers.mu.Unlock()
+	}
+	if changes != nil {
+		go func() {
+			defer h.workers.Done()
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-h.ctx.Done():
+					return
+				case <-ticker.C:
+					changes.poll()
+					changes.sweep()
+				}
+			}
+		}()
+	}
+	go func() {
+		defer h.workers.Done()
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-h.ctx.Done():
+				return
+			case <-ticker.C:
+				h.registry.sweep()
+				if writers != nil {
+					writers.sweep()
+				}
+				if composed != nil {
+					composed.sweep()
+				}
+			}
+		}
+	}()
+	return nil
+}
+
+// Services derives the subject from this exact authenticated call. A failed
+// peer proof leaves an empty scope, which every receiver refuses. The composing
+// host must cancel callCtx after replying so per-call cancellation hooks are
+// released; its call context should also carry a bounded deadline.
+func (h *Component) Services(call *listen.FramedCall, callCtx context.Context) []api.ServedService {
+	if callCtx == nil {
+		callCtx = context.Background()
+	}
+	// The hosting listener owns the per-call deadline; the component's own
+	// shutdown must also cancel in-flight policy decisions on a shared endpoint.
+	active, cancel := context.WithCancel(callCtx)
+	stop := context.AfterFunc(h.ctx, cancel)
+	context.AfterFunc(active, func() { stop() })
+	callCtx = active
+	var peer *identity.Peer
+	if call != nil {
+		proven, err := call.Peer()
+		if err == nil {
+			peer = proven
+		}
+	}
+	scope := callerScope(peer, h.owner)
+	h.lifecycle.Lock()
+	writers, changes, composed := h.writers, h.changes, h.inventory
+	h.lifecycle.Unlock()
+	services := []api.ServedService{&api.ContentReaderDispatcher{Handler: receiver{registry: h.registry, scope: scope, peer: peer, ctx: callCtx}}}
+	if writers != nil {
+		services = append(services, &api.ContentWriterDispatcher{Handler: writeReceiver{writers: writers, scope: scope, peer: peer, ctx: callCtx}})
+	}
+	if changes != nil {
+		var wait context.Context
+		if call != nil {
+			wait = call.WaitContext()
+		}
+		services = append(services, &api.ContentChangesDispatcher{Handler: changesReceiver{journal: changes, scope: scope, peer: peer, ctx: callCtx, wait: wait}})
+	}
+	if composed != nil {
+		services = append(services, &api.InventoryDispatcher{Handler: inventoryReceiver{inventory: composed, scope: scope, peer: peer, ctx: callCtx}})
+	}
+	return services
 }
 func callerScope(peer *identity.Peer, owner string) string {
 	if peer == nil {

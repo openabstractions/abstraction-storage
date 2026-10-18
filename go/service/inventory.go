@@ -66,6 +66,7 @@ type inventorySnapshot struct {
 	records []record
 	cursor  string
 	scope   string
+	store   string
 	expires time.Time
 }
 
@@ -110,7 +111,7 @@ func (i *inventory) sweep() {
 // InventoryResource under abstraction.storage/inventory.read; the read policy
 // filters every composed record by the digests it carries. Configure it
 // before Serve.
-func (h *Host) EnableInventory(gate Policy, sources Sources) error {
+func (h *Component) EnableInventory(gate Policy, sources Sources) error {
 	h.lifecycle.Lock()
 	defer h.lifecycle.Unlock()
 	if h.serving || h.ctx.Err() != nil {
@@ -124,7 +125,7 @@ func (h *Host) EnableInventory(gate Policy, sources Sources) error {
 }
 
 // InventoryAvailable reports whether the composition is configured and serving.
-func (h *Host) InventoryAvailable() bool {
+func (h *Component) InventoryAvailable() bool {
 	h.lifecycle.Lock()
 	defer h.lifecycle.Unlock()
 	return h.inventory != nil && h.ctx.Err() == nil
@@ -132,7 +133,7 @@ func (h *Host) InventoryAvailable() bool {
 
 // changeCursor is the content-changes cursor a frozen inventory is taken at,
 // empty when this host serves no change journal.
-func (h *Host) changeCursor() string {
+func (h *Component) changeCursor() string {
 	h.lifecycle.Lock()
 	changes := h.changes
 	h.lifecycle.Unlock()
@@ -194,11 +195,41 @@ func (i *inventory) compose(ctx context.Context) ([]api.Store, []record, string)
 	return composeSources(ctx, i.sources(ctx))
 }
 
+func (i *inventory) composeStore(ctx context.Context, target string) ([]api.Store, []record, string) {
+	var selected []DesignatedSource
+	for _, source := range i.sources(ctx) {
+		for _, store := range source.Stores {
+			if store == target {
+				selected = append(selected, source)
+				break
+			}
+		}
+	}
+	if len(selected) == 0 {
+		return nil, nil, "invalid"
+	}
+	stores, records, status := composeSourcesForStore(ctx, selected, target)
+	if status != "" {
+		return nil, nil, status
+	}
+	if len(stores) != 1 || stores[0].Name != target {
+		return nil, nil, "unavailable"
+	}
+	return stores, records, ""
+}
+
 func composeSources(ctx context.Context, designated []DesignatedSource) ([]api.Store, []record, string) {
+	return composeSourcesForStore(ctx, designated, "")
+}
+
+func composeSourcesForStore(ctx context.Context, designated []DesignatedSource, target string) ([]api.Store, []record, string) {
 	var stores []api.Store
 	var records []record
 	for _, source := range designated {
 		accepted := func(store string) bool {
+			if target != "" && store != target {
+				return false
+			}
 			for _, s := range source.Stores {
 				if s == store {
 					return true
@@ -239,10 +270,12 @@ func composeSources(ctx context.Context, designated []DesignatedSource) ([]api.S
 				held.Holds = observedHolds(source.Program, o.Holds)
 				records = append(records, record{object: &held, digests: objectDigests(o.Object)})
 			}
-			for _, d := range page.Dangling {
-				want := d
-				want.Holder.EstablishedBy = source.Program
-				records = append(records, record{dangling: &want})
+			if target == "" {
+				for _, d := range page.Dangling {
+					want := d
+					want.Holder.EstablishedBy = source.Program
+					records = append(records, record{dangling: &want})
+				}
 			}
 			if len(records) > MaxInventoryRecords {
 				return nil, nil, "unavailable"
@@ -351,6 +384,17 @@ func (c inventoryReceiver) page(records []record, offset int, limit int64) (api.
 }
 
 func (c inventoryReceiver) List(continuation string, limit int64) (api.InventoryPage, error) {
+	return c.listStoreScoped("", continuation, limit)
+}
+
+func (c inventoryReceiver) ListStore(store, continuation string, limit int64) (api.InventoryPage, error) {
+	if store == "" || len(store) > 256 {
+		return inventoryRefusal(api.InventoryOutcomeInvalid)
+	}
+	return c.listStoreScoped(store, continuation, limit)
+}
+
+func (c inventoryReceiver) listStoreScoped(store, continuation string, limit int64) (api.InventoryPage, error) {
 	if limit < 1 || limit > MaxInventoryPage {
 		return inventoryRefusal(api.InventoryOutcomeInvalid)
 	}
@@ -377,7 +421,14 @@ func (c inventoryReceiver) List(continuation string, limit int64) (api.Inventory
 			return inventoryRefusal(api.InventoryOutcomeUnavailable)
 		}
 		i.mu.Unlock()
-		stores, records, status := i.compose(c.ctx)
+		var stores []api.Store
+		var records []record
+		status := ""
+		if store == "" {
+			stores, records, status = i.compose(c.ctx)
+		} else {
+			stores, records, status = i.composeStore(c.ctx, store)
+		}
 		if status != "" {
 			return inventoryRefusal(inventoryOutcome(status))
 		}
@@ -391,7 +442,7 @@ func (c inventoryReceiver) List(continuation string, limit int64) (api.Inventory
 			return inventoryRefusal(api.InventoryOutcomeUnavailable)
 		}
 		id = token
-		i.snapshots[id] = &inventorySnapshot{stores: stores, records: records, cursor: cursor, scope: c.scope}
+		i.snapshots[id] = &inventorySnapshot{stores: stores, records: records, cursor: cursor, scope: c.scope, store: store}
 	} else {
 		word := ""
 		var ok bool
@@ -409,6 +460,10 @@ func (c inventoryReceiver) List(continuation string, limit int64) (api.Inventory
 		return inventoryRefusal(api.InventoryOutcomeGap)
 	}
 	if snap.scope != c.scope {
+		i.mu.Unlock()
+		return inventoryRefusal(api.InventoryOutcomeForbidden)
+	}
+	if snap.store != store {
 		i.mu.Unlock()
 		return inventoryRefusal(api.InventoryOutcomeForbidden)
 	}

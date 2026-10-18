@@ -799,13 +799,15 @@ class ObjectHolders:
 
 @dataclasses.dataclass(kw_only=True)
 class InventoryPage:
-    """One frozen snapshot across every configured store and designated source;
-    cursor is the content-changes cursor at which it was taken. stores is
-    complete on the first page and empty afterwards. objects carries only
-    objects no manifest entry names. Manifests and objects the caller may not
-    read are omitted without a count. Observed holds carry their observation
-    time and basis, never a promise of current truth. Refusals carry empty
-    lists, empty continuation and cursor, and complete false."""
+    """One frozen inventory snapshot. List spans every configured store and
+    designated source; ListStore spans one registered store and only its
+    designated sources. The cursor is the content-changes cursor at which the
+    snapshot was taken. stores is complete on the first page and empty
+    afterwards. objects carries only objects no manifest entry names. Manifests
+    and objects the caller may not read are omitted without a count. Observed
+    holds carry their observation time and basis, never a promise of current
+    truth. Refusals carry empty lists, empty continuation and cursor, and
+    complete false."""
 
     outcome: InventoryOutcome | None = None
     stores: list[Store] = dataclasses.field(default_factory=list)
@@ -965,6 +967,13 @@ class _InventoryListArguments:
 
 
 @dataclasses.dataclass(kw_only=True)
+class _InventoryListStoreArguments:
+    store: str = ""
+    continuation: str = ""
+    limit: int = 0
+
+
+@dataclasses.dataclass(kw_only=True)
 class _InventoryHoldersArguments:
     target: str = ""
 
@@ -1108,6 +1117,11 @@ class _ManifestsPublishResult:
 
 @dataclasses.dataclass(kw_only=True)
 class _InventoryListResult:
+    value: InventoryPage = dataclasses.field(default_factory=InventoryPage)
+
+
+@dataclasses.dataclass(kw_only=True)
+class _InventoryListStoreResult:
     value: InventoryPage = dataclasses.field(default_factory=InventoryPage)
 
 
@@ -2600,6 +2614,30 @@ def _write_oa_inventory_list_arguments(out, v, depth):
     out += b"}"
 
 
+def _write_oa_inventory_list_store_arguments(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "store")
+    out += b": "
+    _esc(out, v.store)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "continuation")
+    out += b": "
+    _esc(out, v.continuation)
+    out += b","
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "limit")
+    out += b": "
+    _num(out, v.limit)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
 def _write_oa_inventory_holders_arguments(out, v, depth):
     out += b"{"
     out += b"\n"
@@ -2978,6 +3016,18 @@ def _write_oa_manifests_publish_result(out, v, depth):
 
 
 def _write_oa_inventory_list_result(out, v, depth):
+    out += b"{"
+    out += b"\n"
+    _pad(out, depth + 1)
+    _esc(out, "value")
+    out += b": "
+    _write_inventory_page(out, v.value, depth + 1)
+    out += b"\n"
+    _pad(out, depth)
+    out += b"}"
+
+
+def _write_oa_inventory_list_store_result(out, v, depth):
     out += b"{"
     out += b"\n"
     _pad(out, depth + 1)
@@ -6351,6 +6401,55 @@ def _read_oa_inventory_list_arguments(r):
     return v
 
 
+def _read_oa_inventory_list_store_arguments(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _InventoryListStoreArguments()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "store":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.store = r.string()
+            elif key == "continuation":
+                if seen & 2:
+                    raise r.refuse("duplicate_field")
+                seen |= 2
+                v.continuation = r.string()
+            elif key == "limit":
+                if seen & 4:
+                    raise r.refuse("duplicate_field")
+                seen |= 4
+                v.limit = r.integer(-9223372036854775808, 9223372036854775807)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 7 != 7:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_inventory_holders_arguments(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -7459,6 +7558,45 @@ def _read_oa_inventory_list_result(r):
     return v
 
 
+def _read_oa_inventory_list_store_result(r):
+    if r.at() != _LBRACE:
+        raise r.refuse("wrong_type")
+    r.enter()
+    r.pos += 1
+    v = _InventoryListStoreResult()
+    seen = 0
+    r.ws()
+    if r.at() != _RBRACE:
+        while True:
+            r.ws()
+            if r.at() != _QUOTE:
+                raise r.refuse("malformed")
+            key = r.string()
+            r.ws()
+            if r.at() != _COLON:
+                raise r.refuse("malformed")
+            r.pos += 1
+            r.ws()
+            if key == "value":
+                if seen & 1:
+                    raise r.refuse("duplicate_field")
+                seen |= 1
+                v.value = _read_inventory_page(r)
+            else:
+                raise r.refuse("unknown_field")
+            r.ws()
+            if r.at() != _COMMA:
+                break
+            r.pos += 1
+    if r.at() != _RBRACE:
+        raise r.refuse("malformed")
+    r.pos += 1
+    r.depth -= 1
+    if seen & 1 != 1:
+        raise r.refuse("missing_field")
+    return v
+
+
 def _read_oa_inventory_holders_result(r):
     if r.at() != _LBRACE:
         raise r.refuse("wrong_type")
@@ -7828,39 +7966,21 @@ _REFUSALS = ["malformed", "bad_string", "number_spelling", "wrong_type", "bad_ti
 def _refusal_rank(word):
     return _REFUSALS.index(word) if word in _REFUSALS else -1
 
+import base64
+import binascii
+
 def _encode_binary(value):
     if type(value) is not bytes:
         raise Refusal("wrong_type", 0)
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-    out = []
-    for i in range(0, len(value), 3):
-        chunk = value[i:i+3]
-        v = int.from_bytes(chunk, "big") << (8 * (3-len(chunk)))
-        out.extend((alphabet[v >> 18], alphabet[(v >> 12) & 63], alphabet[(v >> 6) & 63] if len(chunk)>1 else "=", alphabet[v & 63] if len(chunk)>2 else "="))
-    return "".join(out)
+    return base64.b64encode(value).decode("ascii")
 
 def _decode_binary(text):
-    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
     def bad():
         raise _Reader(b"").refuse("bad_binary")
-    if len(text) % 4: bad()
-    out = bytearray()
-    for i in range(0,len(text),4):
-        v, pad = 0, 0
-        for j,c in enumerate(text[i:i+4]):
-            if c == "=":
-                if j<2 or i+4 != len(text): bad()
-                pad += 1
-                digit = 0
-            else:
-                if pad: bad()
-                digit = alphabet.find(c)
-                if digit < 0: bad()
-            v = (v << 6) | digit
-        out.append(v >> 16)
-        if pad < 2: out.append((v >> 8) & 255)
-        if pad == 0: out.append(v & 255)
-    result = bytes(out)
+    try:
+        result = base64.b64decode(text, validate=True)
+    except (ValueError, binascii.Error):
+        bad()
     if _encode_binary(result) != text: bad()
     return result
 
@@ -8031,6 +8151,7 @@ _SERVICE_RECORDS = {
     "OAManifestsDescribeArguments": (_ManifestsDescribeArguments, [("id", "string", "never"), ]),
     "OAManifestsPublishArguments": (_ManifestsPublishArguments, [("request", "string", "never"), ("manifest", "Manifest", "never"), ]),
     "OAInventoryListArguments": (_InventoryListArguments, [("continuation", "string", "never"), ("limit", "i64", "never"), ]),
+    "OAInventoryListStoreArguments": (_InventoryListStoreArguments, [("store", "string", "never"), ("continuation", "string", "never"), ("limit", "i64", "never"), ]),
     "OAInventoryHoldersArguments": (_InventoryHoldersArguments, [("target", "string", "never"), ]),
     "OAInventoryUnheldArguments": (_InventoryUnheldArguments, [("continuation", "string", "never"), ("limit", "i64", "never"), ]),
     "OAInventoryFindArguments": (_InventoryFindArguments, [("digest", "string", "never"), ]),
@@ -8058,6 +8179,7 @@ _SERVICE_RECORDS = {
     "OAManifestsDescribeResult": (_ManifestsDescribeResult, [("value", "DescribeResult", "never"), ]),
     "OAManifestsPublishResult": (_ManifestsPublishResult, [("value", "PublishResult", "never"), ]),
     "OAInventoryListResult": (_InventoryListResult, [("value", "InventoryPage", "never"), ]),
+    "OAInventoryListStoreResult": (_InventoryListStoreResult, [("value", "InventoryPage", "never"), ]),
     "OAInventoryHoldersResult": (_InventoryHoldersResult, [("value", "InventoryPage", "never"), ]),
     "OAInventoryUnheldResult": (_InventoryUnheldResult, [("value", "InventoryPage", "never"), ]),
     "OAInventoryFindResult": (_InventoryFindResult, [("value", "InventoryPage", "never"), ]),
@@ -8432,13 +8554,28 @@ class ManifestsClient(Manifests):
 
 
 class Inventory:
-    """What the machine holds and who depends on it, composed from the service's
-    own tables and every designated source."""
+    """What the machine holds and who depends on it. List composes every designated
+    source; ListStore dispatches only designated sources accepted for its exact
+    store."""
 
     def list(self, continuation: str, limit: int) -> InventoryPage:
         """limit 1..256 combined manifests, stray objects and dangling references
         per page. Gated by abstraction.storage/inventory.read; each manifest and
         object is filtered through content.read for its digests."""
+        raise NotImplementedError
+
+    def list_store(self, store: str, continuation: str, limit: int) -> InventoryPage:
+        """Pages one registered store's inventory. Gated by
+        abstraction.storage/inventory.read and the same per-digest content.read
+        policy as List. Only designated sources whose accepted store set
+        includes store are invoked; other designated sources are not read. The
+        source's records are filtered to this exact store. The first page
+        carries only this store; later pages carry none. Store is a non-empty
+        accepted store name of at most 256 bytes. A store not currently
+        designated returns invalid without reading any source. Continuations are
+        bound to this store and caller; using one with another store returns
+        forbidden. Dangling references are omitted because they carry no store
+        identity."""
         raise NotImplementedError
 
     def holders(self, target: str) -> InventoryPage:
@@ -8477,6 +8614,21 @@ class InventoryClient(Inventory):
         _request = _service_request("abstraction.storage/inventory@1", "List", _arguments)
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.storage/inventory@1", "List")
         _result = _service_decode(_read_oa_inventory_list_result, _payload, 1)
+        return _result.value
+
+    def list_store(self, store: str, continuation: str, limit: int) -> InventoryPage:
+        _service_check("string", store)
+        _service_check("string", continuation)
+        _service_check("i64", limit)
+        _args = _InventoryListStoreArguments()
+        _args.store = store
+        _args.continuation = continuation
+        _args.limit = limit
+        _arguments = _service_encode(_write_oa_inventory_list_store_arguments, _args, 1)
+        _service_decode(_read_oa_inventory_list_store_arguments, _arguments, 1)
+        _request = _service_request("abstraction.storage/inventory@1", "ListStore", _arguments)
+        _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.storage/inventory@1", "ListStore")
+        _result = _service_decode(_read_oa_inventory_list_store_result, _payload, 1)
         return _result.value
 
     def holders(self, target: str) -> InventoryPage:

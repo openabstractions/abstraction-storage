@@ -1898,6 +1898,30 @@ function writeOAInventoryListArguments(out, v, depth) {
   out.byte(0x7d);
 }
 
+function writeOAInventoryListStoreArguments(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "store");
+  out.ascii(": ");
+  esc(out, v.store);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "continuation");
+  out.ascii(": ");
+  esc(out, v.continuation);
+  out.byte(0x2c);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "limit");
+  out.ascii(": ");
+  num(out, v.limit);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
 function writeOAInventoryHoldersArguments(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
@@ -2276,6 +2300,18 @@ function writeOAManifestsPublishResult(out, v, depth) {
 }
 
 function writeOAInventoryListResult(out, v, depth) {
+  out.byte(0x7b);
+  out.byte(0x0a);
+  pad(out, depth + 1);
+  esc(out, "value");
+  out.ascii(": ");
+  writeInventoryPage(out, v.value, depth + 1);
+  out.byte(0x0a);
+  pad(out, depth);
+  out.byte(0x7d);
+}
+
+function writeOAInventoryListStoreResult(out, v, depth) {
   out.byte(0x7b);
   out.byte(0x0a);
   pad(out, depth + 1);
@@ -3050,13 +3086,15 @@ export function newObjectHolders() {
   return { object: newObject(), store: "", holds: [] };
 }
 
-// One frozen snapshot across every configured store and designated source;
-// cursor is the content-changes cursor at which it was taken. stores is
-// complete on the first page and empty afterwards. objects carries only objects
-// no manifest entry names. Manifests and objects the caller may not read are
-// omitted without a count. Observed holds carry their observation time and
-// basis, never a promise of current truth. Refusals carry empty lists, empty
-// continuation and cursor, and complete false.
+// One frozen inventory snapshot. List spans every configured store and
+// designated source; ListStore spans one registered store and only its
+// designated sources. The cursor is the content-changes cursor at which the
+// snapshot was taken. stores is complete on the first page and empty
+// afterwards. objects carries only objects no manifest entry names. Manifests
+// and objects the caller may not read are omitted without a count. Observed
+// holds carry their observation time and basis, never a promise of current
+// truth. Refusals carry empty lists, empty continuation and cursor, and
+// complete false.
 export function newInventoryPage() {
   return { outcome: "", stores: [], manifests: [], objects: [], dangling: [], continuation: "", complete: false, cursor: "", graceMs: 0n, auditRetentionMs: 0n };
 }
@@ -3148,6 +3186,10 @@ function newOAManifestsPublishArguments() {
 
 function newOAInventoryListArguments() {
   return { continuation: "", limit: 0n };
+}
+
+function newOAInventoryListStoreArguments() {
+  return { store: "", continuation: "", limit: 0n };
 }
 
 function newOAInventoryHoldersArguments() {
@@ -3255,6 +3297,10 @@ function newOAManifestsPublishResult() {
 }
 
 function newOAInventoryListResult() {
+  return { value: newInventoryPage() };
+}
+
+function newOAInventoryListStoreResult() {
   return { value: newInventoryPage() };
 }
 
@@ -5654,6 +5700,49 @@ function readOAInventoryListArguments(r) {
   return v;
 }
 
+function readOAInventoryListStoreArguments(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAInventoryListStoreArguments();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "store") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.store = r.string();
+      } else if (key === "continuation") {
+        if (seen & 2) throw r.refuse("duplicate_field");
+        seen |= 2;
+        v.continuation = r.string();
+      } else if (key === "limit") {
+        if (seen & 4) throw r.refuse("duplicate_field");
+        seen |= 4;
+        v.limit = r.integer(-9223372036854775808n, 9223372036854775807n);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 7) >>> 0) !== 7) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAInventoryHoldersArguments(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -6643,6 +6732,41 @@ function readOAInventoryListResult(r) {
   return v;
 }
 
+function readOAInventoryListStoreResult(r) {
+  if (r.at() !== 0x7b) throw r.refuse("wrong_type");
+  r.enter();
+  r.pos++;
+  const v = newOAInventoryListStoreResult();
+  let seen = 0;
+  r.ws();
+  if (r.at() !== 0x7d) {
+    for (;;) {
+      r.ws();
+      if (r.at() !== 0x22) throw r.refuse("malformed");
+      const key = r.string();
+      r.ws();
+      if (r.at() !== 0x3a) throw r.refuse("malformed");
+      r.pos++;
+      r.ws();
+      if (key === "value") {
+        if (seen & 1) throw r.refuse("duplicate_field");
+        seen |= 1;
+        v.value = readInventoryPage(r);
+      } else {
+        throw r.refuse("unknown_field");
+      }
+      r.ws();
+      if (r.at() !== 0x2c) break;
+      r.pos++;
+    }
+  }
+  if (r.at() !== 0x7d) throw r.refuse("malformed");
+  r.pos++;
+  r.depth--;
+  if (((seen & 1) >>> 0) !== 1) throw r.refuse("missing_field");
+  return v;
+}
+
 function readOAInventoryHoldersResult(r) {
   if (r.at() !== 0x7b) throw r.refuse("wrong_type");
   r.enter();
@@ -7080,6 +7204,7 @@ _serviceRecords["OAHoldsRenewArguments"] = [["hold","string","never"],["leaseMs"
 _serviceRecords["OAManifestsDescribeArguments"] = [["id","string","never"],];
 _serviceRecords["OAManifestsPublishArguments"] = [["request","string","never"],["manifest","Manifest","never"],];
 _serviceRecords["OAInventoryListArguments"] = [["continuation","string","never"],["limit","i64","never"],];
+_serviceRecords["OAInventoryListStoreArguments"] = [["store","string","never"],["continuation","string","never"],["limit","i64","never"],];
 _serviceRecords["OAInventoryHoldersArguments"] = [["target","string","never"],];
 _serviceRecords["OAInventoryUnheldArguments"] = [["continuation","string","never"],["limit","i64","never"],];
 _serviceRecords["OAInventoryFindArguments"] = [["digest","string","never"],];
@@ -7107,6 +7232,7 @@ _serviceRecords["OAHoldsRenewResult"] = [["value","RenewResult","never"],];
 _serviceRecords["OAManifestsDescribeResult"] = [["value","DescribeResult","never"],];
 _serviceRecords["OAManifestsPublishResult"] = [["value","PublishResult","never"],];
 _serviceRecords["OAInventoryListResult"] = [["value","InventoryPage","never"],];
+_serviceRecords["OAInventoryListStoreResult"] = [["value","InventoryPage","never"],];
 _serviceRecords["OAInventoryHoldersResult"] = [["value","InventoryPage","never"],];
 _serviceRecords["OAInventoryUnheldResult"] = [["value","InventoryPage","never"],];
 _serviceRecords["OAInventoryFindResult"] = [["value","InventoryPage","never"],];
@@ -7357,6 +7483,20 @@ export class InventoryClient {
     const _request = _serviceRequest("abstraction.storage/inventory@1", "List", _payload);
     const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.storage/inventory@1", "List");
     const _result = _serviceDecode(readOAInventoryListResult, _reply, 1);
+    return _result.value;
+  }
+
+  async listStore(store, continuation, limit) {
+    const _args = newOAInventoryListStoreArguments();
+    _args.store = store;
+    _args.continuation = continuation;
+    _args.limit = limit;
+    _serviceCheck("OAInventoryListStoreArguments", _args);
+    const _payload = _serviceEncode(writeOAInventoryListStoreArguments, _args, 1);
+    _serviceDecode(readOAInventoryListStoreArguments, _payload, 1);
+    const _request = _serviceRequest("abstraction.storage/inventory@1", "ListStore", _payload);
+    const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.storage/inventory@1", "ListStore");
+    const _result = _serviceDecode(readOAInventoryListStoreResult, _reply, 1);
     return _result.value;
   }
 

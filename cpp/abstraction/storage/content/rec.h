@@ -1333,13 +1333,15 @@ struct ObjectHolders {
     std::vector<Hold> holds;
 };
 
-// One frozen snapshot across every configured store and designated source;
-// cursor is the content-changes cursor at which it was taken. stores is
-// complete on the first page and empty afterwards. objects carries only objects
-// no manifest entry names. Manifests and objects the caller may not read are
-// omitted without a count. Observed holds carry their observation time and
-// basis, never a promise of current truth. Refusals carry empty lists, empty
-// continuation and cursor, and complete false.
+// One frozen inventory snapshot. List spans every configured store and
+// designated source; ListStore spans one registered store and only its
+// designated sources. The cursor is the content-changes cursor at which the
+// snapshot was taken. stores is complete on the first page and empty
+// afterwards. objects carries only objects no manifest entry names. Manifests
+// and objects the caller may not read are omitted without a count. Observed
+// holds carry their observation time and basis, never a promise of current
+// truth. Refusals carry empty lists, empty continuation and cursor, and
+// complete false.
 struct InventoryPage {
     InventoryOutcome outcome{};
     std::vector<Store> stores;
@@ -1635,6 +1637,12 @@ struct OAInventoryListArguments {
     std::int64_t limit = 0;
 };
 
+struct OAInventoryListStoreArguments {
+    std::string store;
+    std::string continuation;
+    std::int64_t limit = 0;
+};
+
 struct OAInventoryHoldersArguments {
     std::string target;
 };
@@ -1754,6 +1762,10 @@ struct OAInventoryListResult {
     InventoryPage value;
 };
 
+struct OAInventoryListStoreResult {
+    InventoryPage value;
+};
+
 struct OAInventoryHoldersResult {
     InventoryPage value;
 };
@@ -1841,6 +1853,7 @@ inline void enc_oa_holds_renew_arguments(std::string&, const OAHoldsRenewArgumen
 inline void enc_oa_manifests_describe_arguments(std::string&, const OAManifestsDescribeArguments&, int);
 inline void enc_oa_manifests_publish_arguments(std::string&, const OAManifestsPublishArguments&, int);
 inline void enc_oa_inventory_list_arguments(std::string&, const OAInventoryListArguments&, int);
+inline void enc_oa_inventory_list_store_arguments(std::string&, const OAInventoryListStoreArguments&, int);
 inline void enc_oa_inventory_holders_arguments(std::string&, const OAInventoryHoldersArguments&, int);
 inline void enc_oa_inventory_unheld_arguments(std::string&, const OAInventoryUnheldArguments&, int);
 inline void enc_oa_inventory_find_arguments(std::string&, const OAInventoryFindArguments&, int);
@@ -1868,6 +1881,7 @@ inline void enc_oa_holds_renew_result(std::string&, const OAHoldsRenewResult&, i
 inline void enc_oa_manifests_describe_result(std::string&, const OAManifestsDescribeResult&, int);
 inline void enc_oa_manifests_publish_result(std::string&, const OAManifestsPublishResult&, int);
 inline void enc_oa_inventory_list_result(std::string&, const OAInventoryListResult&, int);
+inline void enc_oa_inventory_list_store_result(std::string&, const OAInventoryListStoreResult&, int);
 inline void enc_oa_inventory_holders_result(std::string&, const OAInventoryHoldersResult&, int);
 inline void enc_oa_inventory_unheld_result(std::string&, const OAInventoryUnheldResult&, int);
 inline void enc_oa_inventory_find_result(std::string&, const OAInventoryFindResult&, int);
@@ -3338,6 +3352,30 @@ inline void enc_oa_inventory_list_arguments(std::string& out, const OAInventoryL
     out += '}';
 }
 
+inline void enc_oa_inventory_list_store_arguments(std::string& out, const OAInventoryListStoreArguments& v, int depth) {
+    out += '{';
+    out += '\n';
+    pad(out, depth + 1);
+    esc(out, "store");
+    out += ": ";
+    esc(out, v.store);
+    out += ',';
+    out += '\n';
+    pad(out, depth + 1);
+    esc(out, "continuation");
+    out += ": ";
+    esc(out, v.continuation);
+    out += ',';
+    out += '\n';
+    pad(out, depth + 1);
+    esc(out, "limit");
+    out += ": ";
+    num(out, v.limit);
+    out += '\n';
+    pad(out, depth);
+    out += '}';
+}
+
 inline void enc_oa_inventory_holders_arguments(std::string& out, const OAInventoryHoldersArguments& v, int depth) {
     out += '{';
     out += '\n';
@@ -3393,6 +3431,8 @@ inline void enc_oa_content_remover_remove_arguments(std::string& out, const OACo
 }
 
 inline void enc_oa_inventory_source_describe_arguments(std::string& out, const OAInventorySourceDescribeArguments& v, int depth) {
+    (void)v;
+    (void)depth;
     out += '{';
     out += '}';
 }
@@ -3716,6 +3756,18 @@ inline void enc_oa_manifests_publish_result(std::string& out, const OAManifestsP
 }
 
 inline void enc_oa_inventory_list_result(std::string& out, const OAInventoryListResult& v, int depth) {
+    out += '{';
+    out += '\n';
+    pad(out, depth + 1);
+    esc(out, "value");
+    out += ": ";
+    enc_inventory_page(out, v.value, depth + 1);
+    out += '\n';
+    pad(out, depth);
+    out += '}';
+}
+
+inline void enc_oa_inventory_list_store_result(std::string& out, const OAInventoryListStoreResult& v, int depth) {
     out += '{';
     out += '\n';
     pad(out, depth + 1);
@@ -4317,6 +4369,7 @@ inline OAHoldsRenewArguments decode_oa_holds_renew_arguments(Reader& r);
 inline OAManifestsDescribeArguments decode_oa_manifests_describe_arguments(Reader& r);
 inline OAManifestsPublishArguments decode_oa_manifests_publish_arguments(Reader& r);
 inline OAInventoryListArguments decode_oa_inventory_list_arguments(Reader& r);
+inline OAInventoryListStoreArguments decode_oa_inventory_list_store_arguments(Reader& r);
 inline OAInventoryHoldersArguments decode_oa_inventory_holders_arguments(Reader& r);
 inline OAInventoryUnheldArguments decode_oa_inventory_unheld_arguments(Reader& r);
 inline OAInventoryFindArguments decode_oa_inventory_find_arguments(Reader& r);
@@ -4344,6 +4397,7 @@ inline OAHoldsRenewResult decode_oa_holds_renew_result(Reader& r);
 inline OAManifestsDescribeResult decode_oa_manifests_describe_result(Reader& r);
 inline OAManifestsPublishResult decode_oa_manifests_publish_result(Reader& r);
 inline OAInventoryListResult decode_oa_inventory_list_result(Reader& r);
+inline OAInventoryListStoreResult decode_oa_inventory_list_store_result(Reader& r);
 inline OAInventoryHoldersResult decode_oa_inventory_holders_result(Reader& r);
 inline OAInventoryUnheldResult decode_oa_inventory_unheld_result(Reader& r);
 inline OAInventoryFindResult decode_oa_inventory_find_result(Reader& r);
@@ -6854,6 +6908,49 @@ inline OAInventoryListArguments decode_oa_inventory_list_arguments(Reader& r) {
     return v;
 }
 
+inline OAInventoryListStoreArguments decode_oa_inventory_list_store_arguments(Reader& r) {
+    if (r.at() != '{') r.refuse("wrong_type");
+    r.enter();
+    ++r.pos;
+    OAInventoryListStoreArguments v;
+    std::uint32_t seen = 0;
+    r.skip_ws();
+    if (r.at() != '}') {
+        for (;;) {
+            r.skip_ws();
+            if (r.at() != '"') r.refuse("malformed");
+            const std::string key = r.str();
+            r.skip_ws();
+            if (r.at() != ':') r.refuse("malformed");
+            ++r.pos;
+            r.skip_ws();
+            if (key == "store") {
+                if (seen & 1u) r.refuse("duplicate_field");
+                seen |= 1u;
+                v.store = r.str();
+            } else if (key == "continuation") {
+                if (seen & 2u) r.refuse("duplicate_field");
+                seen |= 2u;
+                v.continuation = r.str();
+            } else if (key == "limit") {
+                if (seen & 4u) r.refuse("duplicate_field");
+                seen |= 4u;
+                v.limit = r.integer(INT64_MIN, INT64_MAX);
+            } else {
+                r.refuse("unknown_field");
+            }
+            r.skip_ws();
+            if (r.at() != ',') break;
+            ++r.pos;
+        }
+    }
+    if (r.at() != '}') r.refuse("malformed");
+    ++r.pos;
+    --r.depth;
+    if ((seen & 7u) != 7u) r.refuse("missing_field");
+    return v;
+}
+
 inline OAInventoryHoldersArguments decode_oa_inventory_holders_arguments(Reader& r) {
     if (r.at() != '{') r.refuse("wrong_type");
     r.enter();
@@ -7003,7 +7100,6 @@ inline OAInventorySourceDescribeArguments decode_oa_inventory_source_describe_ar
     r.enter();
     ++r.pos;
     OAInventorySourceDescribeArguments v;
-    std::uint32_t seen = 0;
     r.skip_ws();
     if (r.at() != '}') {
         for (;;) {
@@ -7813,6 +7909,41 @@ inline OAInventoryListResult decode_oa_inventory_list_result(Reader& r) {
     r.enter();
     ++r.pos;
     OAInventoryListResult v;
+    std::uint32_t seen = 0;
+    r.skip_ws();
+    if (r.at() != '}') {
+        for (;;) {
+            r.skip_ws();
+            if (r.at() != '"') r.refuse("malformed");
+            const std::string key = r.str();
+            r.skip_ws();
+            if (r.at() != ':') r.refuse("malformed");
+            ++r.pos;
+            r.skip_ws();
+            if (key == "value") {
+                if (seen & 1u) r.refuse("duplicate_field");
+                seen |= 1u;
+                v.value = decode_inventory_page(r);
+            } else {
+                r.refuse("unknown_field");
+            }
+            r.skip_ws();
+            if (r.at() != ',') break;
+            ++r.pos;
+        }
+    }
+    if (r.at() != '}') r.refuse("malformed");
+    ++r.pos;
+    --r.depth;
+    if ((seen & 1u) != 1u) r.refuse("missing_field");
+    return v;
+}
+
+inline OAInventoryListStoreResult decode_oa_inventory_list_store_result(Reader& r) {
+    if (r.at() != '{') r.refuse("wrong_type");
+    r.enter();
+    ++r.pos;
+    OAInventoryListStoreResult v;
     std::uint32_t seen = 0;
     r.skip_ws();
     if (r.at() != '}') {
@@ -8691,6 +8822,7 @@ bool(*ready_hook_)(void*,std::string&)=nullptr;
 };
 struct Inventory{virtual ~Inventory()=default;
 virtual InventoryPage list(const std::string& continuation,const std::int64_t& limit)=0;
+virtual InventoryPage list_store(const std::string& store,const std::string& continuation,const std::int64_t& limit)=0;
 virtual InventoryPage holders(const std::string& target)=0;
 virtual InventoryPage unheld(const std::string& continuation,const std::int64_t& limit)=0;
 virtual InventoryPage find(const std::string& digest)=0;
@@ -8701,6 +8833,14 @@ args.continuation=continuation;
 args.limit=limit;
 detail::OAServiceFrame v;v.version=1;v.service="abstraction.storage/inventory@1";v.method="List";detail::enc_oa_inventory_list_arguments(v.arguments,args,1);std::string frame;detail::enc_oa_service_frame(frame,v,0);detail::service_payload(frame);
 auto response=transport_.exchange_frame(frame);auto payload=detail::service_response(response,v.service,v.method);detail::Reader r{payload};r.depth=1;r.skip_ws();auto result=detail::decode_oa_inventory_list_result(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse("trailing_bytes");
+return result.value;
+}
+InventoryPage list_store(const std::string& store,const std::string& continuation,const std::int64_t& limit)override{detail::OAInventoryListStoreArguments args;
+args.store=store;
+args.continuation=continuation;
+args.limit=limit;
+detail::OAServiceFrame v;v.version=1;v.service="abstraction.storage/inventory@1";v.method="ListStore";detail::enc_oa_inventory_list_store_arguments(v.arguments,args,1);std::string frame;detail::enc_oa_service_frame(frame,v,0);detail::service_payload(frame);
+auto response=transport_.exchange_frame(frame);auto payload=detail::service_response(response,v.service,v.method);detail::Reader r{payload};r.depth=1;r.skip_ws();auto result=detail::decode_oa_inventory_list_store_result(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse("trailing_bytes");
 return result.value;
 }
 InventoryPage holders(const std::string& target)override{detail::OAInventoryHoldersArguments args;
@@ -8732,6 +8872,8 @@ DescribedService describe_service()const{DescribedService s{"abstraction.storage
 void write_frame(std::string_view frame)override{auto v=detail::service_payload(frame);if(v.service!="abstraction.storage/inventory@1")throw DispatchError("unknown_service");
 if(v.method=="List"){
 throw DispatchError("wrong_mode");}
+if(v.method=="ListStore"){
+throw DispatchError("wrong_mode");}
 if(v.method=="Holders"){
 throw DispatchError("wrong_mode");}
 if(v.method=="Unheld"){
@@ -8743,6 +8885,8 @@ std::string exchange_frame(std::string_view frame)override{auto v=detail::servic
 try{
 if(v.method=="List"){
 detail::Reader r{v.arguments};r.depth=1;r.skip_ws();auto args=detail::decode_oa_inventory_list_arguments(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse("trailing_bytes");auto payload=invoke_list(args);return detail::service_reply(v,payload);}
+if(v.method=="ListStore"){
+detail::Reader r{v.arguments};r.depth=1;r.skip_ws();auto args=detail::decode_oa_inventory_list_store_arguments(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse("trailing_bytes");auto payload=invoke_list_store(args);return detail::service_reply(v,payload);}
 if(v.method=="Holders"){
 detail::Reader r{v.arguments};r.depth=1;r.skip_ws();auto args=detail::decode_oa_inventory_holders_arguments(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse("trailing_bytes");auto payload=invoke_holders(args);return detail::service_reply(v,payload);}
 if(v.method=="Unheld"){
@@ -8761,6 +8905,17 @@ try{
 detail::OAInventoryListResult value;
 value.value=result;
 Raw payload;detail::enc_oa_inventory_list_result(payload,value,1);detail::Reader r{payload};r.depth=1;r.skip_ws();detail::decode_oa_inventory_list_result(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse("trailing_bytes");return payload;
+}catch(...){throw ServiceError("invalid_result","");}
+}
+Raw invoke_list_store(const detail::OAInventoryListStoreArguments&args){
+InventoryPage result{};
+try{
+result=handler.list_store(args.store,args.continuation,args.limit);
+}catch(const ServiceError&){throw;}catch(...){throw ServiceError("handler_error","handler failed");}
+try{
+detail::OAInventoryListStoreResult value;
+value.value=result;
+Raw payload;detail::enc_oa_inventory_list_store_result(payload,value,1);detail::Reader r{payload};r.depth=1;r.skip_ws();detail::decode_oa_inventory_list_store_result(r);r.skip_ws();if(r.pos!=r.buf.size())r.refuse("trailing_bytes");return payload;
 }catch(...){throw ServiceError("invalid_result","");}
 }
 Raw invoke_holders(const detail::OAInventoryHoldersArguments&args){
@@ -8918,6 +9073,7 @@ throw ServiceError("unknown_method","");}catch(const ServiceError&e){return deta
 }
 private:
 Raw invoke_describe(const detail::OAInventorySourceDescribeArguments&args){
+(void)args;
 SourceDescription result{};
 try{
 result=handler.describe();

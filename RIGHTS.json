@@ -1,0 +1,200 @@
+{
+  "format": "openabstractions-rights@1",
+  "owner": "abstraction.storage",
+  "generated": "Do not edit. Run rights-catalogue --write from the existing compiled catalogue.",
+  "source": "github.com/openabstractions/abstraction-facade/go/grants",
+  "availability": "Compiled catalogue reference: served and selector support use the named receiving-service context. Connected-runtime discovery supplies current availability. Facade Applications is experimental. Definitions grant no access.",
+  "compiled_receivers": {
+    "credentials": true,
+    "application_logs": true
+  },
+  "definitions": [
+    {
+      "definition": {
+        "action": "abstraction.storage/content.observe",
+        "owner_contract": "abstraction.storage/content-changes@1",
+        "operations": [
+          "abstraction.storage/content-changes@1#Observe",
+          "abstraction.storage/content-changes@1#List"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.storage/content-changes@1"
+        ],
+        "disclosure": "Read/list changes only for readable digests.",
+        "lifecycle": "Account store changes, filtered by content.read per digest.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.storage/content.observe",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Account store changes, filtered by content.read per digest.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.storage/content.read",
+        "owner_contract": "abstraction.storage/content-reader@1",
+        "operations": [
+          "abstraction.storage/content-reader@1#Open",
+          "abstraction.storage/content-reader@1#Read",
+          "abstraction.storage/inventory@1#List",
+          "abstraction.storage/inventory@1#ListStore",
+          "abstraction.storage/inventory@1#Holders",
+          "abstraction.storage/inventory@1#Unheld",
+          "abstraction.storage/inventory@1#Find"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.storage/content-reader@1",
+          "abstraction.storage/inventory@1"
+        ],
+        "disclosure": "Open/read verified-by-consumer content through bounded chunks. List/find/holders/unheld composed inventory.",
+        "lifecycle": "Exact digest OR caller-owned published profile bytes. Composed stores/files/holders; content.read filters objects/manifests. ListStore limits data source selection, not authority.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.storage/content.read",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Exact digest OR caller-owned published profile bytes. Composed stores/files/holders; content.read filters objects/manifests. ListStore limits data source selection, not authority.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.storage/content.remove",
+        "owner_contract": "abstraction.storage/content-remover@1",
+        "operations": [
+          "abstraction.storage/content-remover@1#Remove"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [],
+        "disclosure": "Defined removal of content; the content-remover@1 receiving service is unserved.",
+        "lifecycle": "Defined exact content resource; no current receiving enforcement or first-use admission.",
+        "first_use": "none",
+        "served": false
+      },
+      "label": "abstraction.storage/content.remove",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Defined exact content resource; no current receiving enforcement or first-use admission.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.storage/content.write",
+        "owner_contract": "abstraction.storage/content-writer@1",
+        "operations": [
+          "abstraction.storage/content-writer@1#Begin",
+          "abstraction.storage/content-writer@1#Append",
+          "abstraction.storage/content-writer@1#Commit"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.storage/content-writer@1"
+        ],
+        "disclosure": "Begin/append/commit verified bytes; Abort cleans caller upload.",
+        "lifecycle": "One upload or typed profile; write right supplies no unrelated read permission.",
+        "first_use": "consuming_paired",
+        "served": true
+      },
+      "label": "abstraction.storage/content.write",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "One upload or typed profile; write right supplies no unrelated read permission.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.storage/inventory.provide",
+        "owner_contract": "abstraction.storage/inventory-source@1",
+        "operations": [
+          "abstraction.storage/inventory-source@1#Describe",
+          "abstraction.storage/inventory-source@1#Snapshot",
+          "abstraction.storage/inventory-source@1#Observe",
+          "abstraction.storage/inventory-source@1#Verify",
+          "abstraction.storage/inventory-source@1#Remove"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.storage/inventory-source@1"
+        ],
+        "disclosure": "Describe/snapshot/observe/verify/remove source index/files under owned provider contract.",
+        "lifecycle": "Provider-owned declared store; trusted runtime peer, no arbitrary app peer.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.storage/inventory.provide",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Provider-owned declared store; trusted runtime peer, no arbitrary app peer.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.storage/inventory.read",
+        "owner_contract": "abstraction.storage/inventory@1",
+        "operations": [
+          "abstraction.storage/inventory@1#List",
+          "abstraction.storage/inventory@1#ListStore",
+          "abstraction.storage/inventory@1#Holders",
+          "abstraction.storage/inventory@1#Unheld",
+          "abstraction.storage/inventory@1#Find"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.storage/inventory@1"
+        ],
+        "disclosure": "List/find/holders/unheld composed inventory.",
+        "lifecycle": "Composed stores/files/holders; content.read filters objects/manifests. ListStore limits data source selection, not authority.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.storage/inventory.read",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Composed stores/files/holders; content.read filters objects/manifests. ListStore limits data source selection, not authority.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.storage/lend",
+        "owner_contract": "abstraction.storage/lend@1",
+        "operations": [
+          "abstraction.storage/lend@1#Lend",
+          "abstraction.storage/lend@1#Unlend",
+          "abstraction.storage/lend@1#Lends"
+        ],
+        "resource_profile": "abstraction.rights/legacy-exact-string@1",
+        "resource_type": "string (legacy exact resource)",
+        "enforced_by": [
+          "abstraction.storage/lend@1"
+        ],
+        "disclosure": "Lend/unlend authorized model link/copy; observe filtered lend ledger.",
+        "lifecycle": "One engine; all existing lends to that engine; Lends returns permitted engines only.",
+        "first_use": "exact",
+        "served": true
+      },
+      "label": "abstraction.storage/lend",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "One engine; all existing lends to that engine; Lends returns permitted engines only.",
+      "all_effect": "",
+      "request_type": "string (legacy exact resource)"
+    }
+  ],
+  "bundles": []
+}

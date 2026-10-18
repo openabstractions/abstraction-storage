@@ -3492,13 +3492,15 @@ type ObjectHolders struct {
 	Holds  []Hold
 }
 
-// One frozen snapshot across every configured store and designated source;
-// cursor is the content-changes cursor at which it was taken. stores is
-// complete on the first page and empty afterwards. objects carries only objects
-// no manifest entry names. Manifests and objects the caller may not read are
-// omitted without a count. Observed holds carry their observation time and
-// basis, never a promise of current truth. Refusals carry empty lists, empty
-// continuation and cursor, and complete false.
+// One frozen inventory snapshot. List spans every configured store and
+// designated source; ListStore spans one registered store and only its
+// designated sources. The cursor is the content-changes cursor at which the
+// snapshot was taken. stores is complete on the first page and empty
+// afterwards. objects carries only objects no manifest entry names. Manifests
+// and objects the caller may not read are omitted without a count. Observed
+// holds carry their observation time and basis, never a promise of current
+// truth. Refusals carry empty lists, empty continuation and cursor, and
+// complete false.
 type InventoryPage struct {
 	Outcome          InventoryOutcome
 	Stores           []Store
@@ -3634,6 +3636,12 @@ type oaInventoryListArguments struct {
 	Limit        int64
 }
 
+type oaInventoryListStoreArguments struct {
+	Store        string
+	Continuation string
+	Limit        int64
+}
+
 type oaInventoryHoldersArguments struct {
 	Target string
 }
@@ -3750,6 +3758,10 @@ type oaManifestsPublishResult struct {
 }
 
 type oaInventoryListResult struct {
+	Value InventoryPage
+}
+
+type oaInventoryListStoreResult struct {
 	Value InventoryPage
 }
 
@@ -5333,6 +5345,30 @@ func encOAInventoryListArguments(out []byte, v *oaInventoryListArguments, depth 
 	return append(out, '}')
 }
 
+func encOAInventoryListStoreArguments(out []byte, v *oaInventoryListStoreArguments, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "store")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Store)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "continuation")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Continuation)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "limit")
+	out = append(out, ':', ' ')
+	out = num(out, v.Limit)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encOAInventoryHoldersArguments(out []byte, v *oaInventoryHoldersArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
@@ -5715,6 +5751,18 @@ func encOAManifestsPublishResult(out []byte, v *oaManifestsPublishResult, depth 
 }
 
 func encOAInventoryListResult(out []byte, v *oaInventoryListResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encInventoryPage(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encOAInventoryListStoreResult(out []byte, v *oaInventoryListStoreResult, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
 	out = pad(out, depth+1)
@@ -11113,6 +11161,85 @@ func (r *reader) decodeOAInventoryListArguments() (*oaInventoryListArguments, er
 	return v, nil
 }
 
+func (r *reader) decodeOAInventoryListStoreArguments() (*oaInventoryListStoreArguments, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryListStoreArguments{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "store":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Store = x
+			case "continuation":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Continuation = x
+			case "limit":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.Limit = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeOAInventoryHoldersArguments() (*oaInventoryHoldersArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -12753,6 +12880,65 @@ func (r *reader) decodeOAInventoryListResult() (*oaInventoryListResult, error) {
 	}
 	r.pos++
 	v := &oaInventoryListResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeInventoryPage()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeOAInventoryListStoreResult() (*oaInventoryListStoreResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &oaInventoryListStoreResult{}
 	var seen uint32
 	r.ws()
 	if r.at() != '}' {
@@ -15296,6 +15482,7 @@ func (d *ManifestsDispatcher) invokePublish(args *oaManifestsPublishArguments) (
 
 type Inventory interface {
 	List(continuation string, limit int64) (InventoryPage, error)
+	ListStore(store, continuation string, limit int64) (InventoryPage, error)
 	Holders(target string) (InventoryPage, error)
 	Unheld(continuation string, limit int64) (InventoryPage, error)
 	Find(digest string) (InventoryPage, error)
@@ -15339,6 +15526,48 @@ func (c *InventoryClient) List(continuation string, limit int64) (result Invento
 	r.ws()
 	var decoded *oaInventoryListResult
 	decoded, err = r.decodeOAInventoryListResult()
+	if err != nil {
+		return
+	}
+	_ = decoded
+	r.ws()
+	if r.pos != len(r.buf) {
+		err = r.refuse("trailing_bytes")
+		return
+	}
+	result = decoded.Value
+	return
+}
+func (c *InventoryClient) ListStore(store, continuation string, limit int64) (result InventoryPage, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				err = e
+			} else {
+				panic(p)
+			}
+		}
+	}()
+	args := oaInventoryListStoreArguments{Store: store, Continuation: continuation, Limit: limit}
+	v := oaServiceFrame{Version: 1, Service: "abstraction.storage/inventory@1", Method: "ListStore", Arguments: Raw(encOAInventoryListStoreArguments(nil, &args, 1))}
+	frame := encOAServiceFrame(nil, &v, 0)
+	if _, err = servicePayload(frame); err != nil {
+		return
+	}
+	var response []byte
+	response, err = c.transport.ExchangeFrame(frame)
+	if err != nil {
+		return
+	}
+	var payload Raw
+	payload, err = serviceResponse(response, v.Service, v.Method)
+	if err != nil {
+		return
+	}
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	var decoded *oaInventoryListStoreResult
+	decoded, err = r.decodeOAInventoryListStoreResult()
 	if err != nil {
 		return
 	}
@@ -15514,6 +15743,8 @@ func (d *InventoryDispatcher) WriteFrame(frame []byte) error {
 	switch v.Method {
 	case "List":
 		return DispatchError("wrong_mode")
+	case "ListStore":
+		return DispatchError("wrong_mode")
 	case "Holders":
 		return DispatchError("wrong_mode")
 	case "Unheld":
@@ -15548,6 +15779,19 @@ func (d *InventoryDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 			return serviceReply(v, "", r.refuse("trailing_bytes"))
 		}
 		payload, err := d.invokeList(args)
+		return serviceReply(v, payload, err)
+	case "ListStore":
+		r := &reader{buf: []byte(v.Arguments), depth: 1}
+		r.ws()
+		args, err := r.decodeOAInventoryListStoreArguments()
+		if err != nil {
+			return serviceReply(v, "", err)
+		}
+		r.ws()
+		if r.pos != len(r.buf) {
+			return serviceReply(v, "", r.refuse("trailing_bytes"))
+		}
+		payload, err := d.invokeListStore(args)
 		return serviceReply(v, payload, err)
 	case "Holders":
 		r := &reader{buf: []byte(v.Arguments), depth: 1}
@@ -15613,6 +15857,38 @@ func (d *InventoryDispatcher) invokeList(args *oaInventoryListArguments) (payloa
 	r := &reader{buf: []byte(payload), depth: 1}
 	r.ws()
 	if _, e := r.decodeOAInventoryListResult(); e != nil {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		payload = ""
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+	}
+	return
+}
+func (d *InventoryDispatcher) invokeListStore(args *oaInventoryListStoreArguments) (payload Raw, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			payload = ""
+			if _, ok := p.(*Refusal); ok {
+				err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+			} else {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}
+	}()
+	var result InventoryPage
+	result, err = d.Handler.ListStore(args.Store, args.Continuation, args.Limit)
+	if err != nil {
+		return
+	}
+	value := oaInventoryListStoreResult{Value: result}
+	payload = Raw(encOAInventoryListStoreResult(nil, &value, 1))
+	r := &reader{buf: []byte(payload), depth: 1}
+	r.ws()
+	if _, e := r.decodeOAInventoryListStoreResult(); e != nil {
 		payload = ""
 		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return

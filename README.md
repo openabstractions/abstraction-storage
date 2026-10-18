@@ -1,9 +1,17 @@
 # abstraction-storage
 
-Read or write shared content by its verified identity while the storage service
-keeps backend paths and file permissions private. A client opens content by its
+*For applications that store and read shared bytes. Provider authors start at
+[Explicit native providers](#explicit-native-providers).*
+
+Content is named by a SHA-256 digest. A writer commits bytes only when they
+match it; a provider may name an existing object by digest (`evidence=named`).
+Read or write shared content by its identity while the storage service keeps backend paths and file permissions private. A client opens content by its
 canonical identifier, transfers bounded chunks and closes its own handle. The
 same application API can sit over a local store or another authorized provider.
+
+**What's new here:** One copy per digest: a writer whose bytes the store
+already holds is answered `present` or `committed`, and the store keeps no
+second copy. Readers open content by its digest and see no path.
 
 Choose the service that matches the application:
 
@@ -13,9 +21,16 @@ Choose the service that matches the application:
 | Store bytes atomically under their SHA-256 digest | `abstraction.storage/content-writer@1` |
 | Observe the latest content inventory and changes | `abstraction.storage/content-changes@1` |
 
+`abstraction.storage/inventory@1` offers both a machine-wide `List` and a
+store-scoped `ListStore`. Use `ListStore` when an operation is authorized for
+one registered store: it reads only the designated source or sources that
+serve that store, and binds page continuations to the same store and caller.
+
 Each service is resolved independently through the facade. Rights are checked
 at the service that owns the content. A digest is an identifier; callers that
 require byte integrity verify the assembled digest or require hashed evidence.
+Examples are in [Reading content](#reading-content) and
+[Writing content](#writing-content).
 
 ## Application clients
 
@@ -39,7 +54,7 @@ copies one into the other on completion. A job-service download has no
 destination path for an application to read directly; an application pages
 the bytes out of the job's `ReadResult` and hands them to `content-writer@1`
 itself, to make them readable through `content-reader@1`. [The worked
-bridge](https://github.com/openabstractions/abstraction-download#reading-a-finished-download-through-storage)
+bridge](https://github.com/openabstractions/abstraction-download#into-the-content-store)
 is on the download layer's own page.
 
 ### Reading content
@@ -308,8 +323,10 @@ in [`go/abstraction/storage/content/rec.go`](go/abstraction/storage/content/rec.
 and mirrored in `cpp/abstraction/storage/content/rec.h`,
 `py/abstraction/storage/content/_codec.py`, `rs/abstraction/storage/content/rec.rs`
 and `javascript/js/abstraction/storage/content/index.d.mts`. Past the codec,
-none of the three below has a server, a facade resolve method or a rights
-catalogue action, and [`CONTRACT.md`](CONTRACT.md) does not cover them:
+none of the three below has a server or a facade resolve method, and
+[`CONTRACT.md`](CONTRACT.md) does not cover them. The rights catalogue already
+defines `abstraction.storage/content.remove`; its receiving service remains
+unserved:
 
 - **`Manifests`** — no server registers it; the facade has no
   `ResolveStorageManifests`.
@@ -378,3 +395,23 @@ and [`cpp/test/service/README.md`](cpp/test/service/README.md) /
 ## Licence
 
 [Apache-2.0](LICENSE)
+
+<!-- BEGIN GENERATED PERMISSION DEFINITIONS -->
+
+## Permission definitions
+
+Generated from the existing compiled catalogue. [RIGHTS.json](RIGHTS.json) contains the complete action/profile records, disclosure, lifecycle, first-use behavior, selector support and finite bundles.
+
+This reference records compiled receiving support; RIGHTS.json names the compilation context. A connected runtime advertises current availability and selector support. These definitions supply no grant.
+
+| Action | Resource profile | Owning operations | First-use targets | Compiled receiver |
+|---|---|---|---|---|
+| `abstraction.storage/content.observe` | `abstraction.rights/legacy-exact-string@1` | `abstraction.storage/content-changes@1#Observe`, `abstraction.storage/content-changes@1#List` | `none` | served in compiled context |
+| `abstraction.storage/content.read` | `abstraction.rights/legacy-exact-string@1` | `abstraction.storage/content-reader@1#Open`, `abstraction.storage/content-reader@1#Read`, `abstraction.storage/inventory@1#List`, `abstraction.storage/inventory@1#ListStore`, `abstraction.storage/inventory@1#Holders`, `abstraction.storage/inventory@1#Unheld`, `abstraction.storage/inventory@1#Find` | `none` | served in compiled context |
+| `abstraction.storage/content.remove` | `abstraction.rights/legacy-exact-string@1` | `abstraction.storage/content-remover@1#Remove` | `none` | defined, unserved |
+| `abstraction.storage/content.write` | `abstraction.rights/legacy-exact-string@1` | `abstraction.storage/content-writer@1#Begin`, `abstraction.storage/content-writer@1#Append`, `abstraction.storage/content-writer@1#Commit` | Legacy `consuming_paired` | served in compiled context |
+| `abstraction.storage/inventory.provide` | `abstraction.rights/legacy-exact-string@1` | `abstraction.storage/inventory-source@1#Describe`, `abstraction.storage/inventory-source@1#Snapshot`, `abstraction.storage/inventory-source@1#Observe`, `abstraction.storage/inventory-source@1#Verify`, `abstraction.storage/inventory-source@1#Remove` | `none` | served in compiled context |
+| `abstraction.storage/inventory.read` | `abstraction.rights/legacy-exact-string@1` | `abstraction.storage/inventory@1#List`, `abstraction.storage/inventory@1#ListStore`, `abstraction.storage/inventory@1#Holders`, `abstraction.storage/inventory@1#Unheld`, `abstraction.storage/inventory@1#Find` | `none` | served in compiled context |
+| `abstraction.storage/lend` | `abstraction.rights/legacy-exact-string@1` | `abstraction.storage/lend@1#Lend`, `abstraction.storage/lend@1#Unlend`, `abstraction.storage/lend@1#Lends` | Legacy `exact` | served in compiled context |
+
+<!-- END GENERATED PERMISSION DEFINITIONS -->

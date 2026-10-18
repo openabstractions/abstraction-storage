@@ -269,11 +269,13 @@ export declare class HoldsClient {
 
 export declare const HoldsService: Readonly<{ wireName: "abstraction.storage/holds@1"; Client: typeof HoldsClient }>;
 
-/** What the machine holds and who depends on it, composed from the service's own tables and every designated source. */
+/** What the machine holds and who depends on it. List composes every designated source; ListStore dispatches only designated sources accepted for its exact store. */
 export declare class InventoryClient {
   constructor(transport: FrameTransport);
   /** limit 1..256 combined manifests, stray objects and dangling references per page. Gated by abstraction.storage/inventory.read; each manifest and object is filtered through content.read for its digests. */
   list(continuation: string, limit: bigint): Promise<InventoryPage>;
+  /** Pages one registered store's inventory. Gated by abstraction.storage/inventory.read and the same per-digest content.read policy as List. Only designated sources whose accepted store set includes store are invoked; other designated sources are not read. The source's records are filtered to this exact store. The first page carries only this store; later pages carry none. Store is a non-empty accepted store name of at most 256 bytes. A store not currently designated returns invalid without reading any source. Continuations are bound to this store and caller; using one with another store returns forbidden. Dangling references are omitted because they carry no store identity. */
+  listStore(store: string, continuation: string, limit: bigint): Promise<InventoryPage>;
   /** Every hold on one manifest id or digest, re-observed at call time through each source's Verify: observed holds return as verified or are omitted; declared holds return as declared. Dangling references naming the target's names are included. */
   holders(target: string): Promise<InventoryPage>;
   /** Manifests and objects with no declared hold and no verified observed hold at two observations at least grace_ms apart, oldest first. */
@@ -285,13 +287,15 @@ export declare class InventoryClient {
 export type InventoryOutcome = (typeof InventoryOutcome)[keyof typeof InventoryOutcome];
 export declare const InventoryOutcome: Readonly<{ Page: "page"; Gap: "gap"; Forbidden: "forbidden"; Invalid: "invalid"; Unavailable: "unavailable" }>;
 
-// One frozen snapshot across every configured store and designated source;
-// cursor is the content-changes cursor at which it was taken. stores is
-// complete on the first page and empty afterwards. objects carries only objects
-// no manifest entry names. Manifests and objects the caller may not read are
-// omitted without a count. Observed holds carry their observation time and
-// basis, never a promise of current truth. Refusals carry empty lists, empty
-// continuation and cursor, and complete false.
+// One frozen inventory snapshot. List spans every configured store and
+// designated source; ListStore spans one registered store and only its
+// designated sources. The cursor is the content-changes cursor at which the
+// snapshot was taken. stores is complete on the first page and empty
+// afterwards. objects carries only objects no manifest entry names. Manifests
+// and objects the caller may not read are omitted without a count. Observed
+// holds carry their observation time and basis, never a promise of current
+// truth. Refusals carry empty lists, empty continuation and cursor, and
+// complete false.
 export interface InventoryPage {
   outcome: InventoryOutcome;
   stores: Store[];

@@ -113,6 +113,20 @@ func (c *ContentStore) Commit(r Ref) error {
 	return os.Rename(from, c.blob(hex))
 }
 
+// Remove deletes the committed bytes of digest. Content already absent is
+// success, so a collector that crashed after removing can repeat itself. A
+// reservation under incoming/ is left to its writer.
+func (c *ContentStore) Remove(digest string) error {
+	hex := hexOf(digest)
+	if hex == "" {
+		return fmt.Errorf("%w: cannot remove without a digest", ErrNotFound)
+	}
+	if err := os.Remove(c.blob(hex)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func (c *ContentStore) Path(r Ref) string { return Locator(r) }
 
 // Root is where this store keeps its bytes. For the binding and for diagnostics.

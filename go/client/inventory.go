@@ -69,6 +69,44 @@ func (c *Inventory) List(ctx context.Context, continuation string, limit int64) 
 	return page, nil
 }
 
+// ListStore pages one registered store without reading other designated sources.
+func (c *Inventory) ListStore(ctx context.Context, store, continuation string, limit int64) (api.InventoryPage, error) {
+	if store == "" || len(store) > 256 || len(continuation) > 256 || limit < 1 || limit > 256 {
+		return api.InventoryPage{}, errors.New("storage: invalid store inventory request")
+	}
+	page, err := c.call(ctx).ListStore(store, continuation, limit)
+	if err != nil {
+		return api.InventoryPage{}, err
+	}
+	if err := validInventoryPage(page, continuation, limit); err != nil {
+		return api.InventoryPage{}, err
+	}
+	if page.Outcome == api.InventoryOutcomePage {
+		for _, item := range page.Stores {
+			if item.Name != store {
+				return api.InventoryPage{}, errors.New("storage: store inventory returned another store")
+			}
+		}
+		if continuation == "" && len(page.Stores) != 1 {
+			return api.InventoryPage{}, errors.New("storage: store inventory omitted its first-page store")
+		}
+		for _, item := range page.Manifests {
+			if item.Manifest.Store != store {
+				return api.InventoryPage{}, errors.New("storage: store inventory returned another store's manifest")
+			}
+		}
+		for _, item := range page.Objects {
+			if item.Store != store {
+				return api.InventoryPage{}, errors.New("storage: store inventory returned another store's object")
+			}
+		}
+		if len(page.Dangling) != 0 {
+			return api.InventoryPage{}, errors.New("storage: store inventory returned unscoped dangling references")
+		}
+	}
+	return page, nil
+}
+
 // Holders re-observes every hold on one manifest id or digest now.
 func (c *Inventory) Holders(ctx context.Context, target string) (api.InventoryPage, error) {
 	if target == "" || len(target) > 1024 {

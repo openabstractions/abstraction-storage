@@ -116,7 +116,7 @@
 <li>Argument 2: <code>Manifest</code> <code>manifest</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Inventory">Service <code>Inventory</code> <span class="tag">[DEF-S1]</span></h2>
-<p>What the machine holds and who depends on it, composed from the service&#39;s own tables and every designated source.</p>
+<p>What the machine holds and who depends on it. List composes every designated source; ListStore dispatches only designated sources accepted for its exact store.</p>
 <p>Wire identity: <code>abstraction.storage/inventory@1</code></p>
 <p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
@@ -125,6 +125,12 @@
 <h3><code>List</code></h3><p><code>request-response</code> <code>InventoryPage</code></p><ul>
 <li>Argument 1: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
+</ul>
+<p>Pages one registered store&#39;s inventory. Gated by abstraction.storage/inventory.read and the same per-digest content.read policy as List. Only designated sources whose accepted store set includes store are invoked; other designated sources are not read. The source&#39;s records are filtered to this exact store. The first page carries only this store; later pages carry none. Store is a non-empty accepted store name of at most 256 bytes. A store not currently designated returns invalid without reading any source. Continuations are bound to this store and caller; using one with another store returns forbidden. Dangling references are omitted because they carry no store identity.</p>
+<h3><code>ListStore</code></h3><p><code>request-response</code> <code>InventoryPage</code></p><ul>
+<li>Argument 1: <code>string</code> <code>store</code> (required, including zero/false/empty)</li>
+<li>Argument 2: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
+<li>Argument 3: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Every hold on one manifest id or digest, re-observed at call time through each source&#39;s Verify: observed holds return as verified or are omitted; declared holds return as declared. Dangling references naming the target&#39;s names are included.</p>
 <h3><code>Holders</code></h3><p><code>request-response</code> <code>InventoryPage</code></p><ul>

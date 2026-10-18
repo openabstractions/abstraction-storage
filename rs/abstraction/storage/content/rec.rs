@@ -1909,13 +1909,15 @@ pub struct ObjectHolders {
     pub holds: Vec<Hold>,
 }
 
-/// One frozen snapshot across every configured store and designated source;
-/// cursor is the content-changes cursor at which it was taken. stores is
-/// complete on the first page and empty afterwards. objects carries only
-/// objects no manifest entry names. Manifests and objects the caller may not
-/// read are omitted without a count. Observed holds carry their observation
-/// time and basis, never a promise of current truth. Refusals carry empty
-/// lists, empty continuation and cursor, and complete false.
+/// One frozen inventory snapshot. List spans every configured store and
+/// designated source; ListStore spans one registered store and only its
+/// designated sources. The cursor is the content-changes cursor at which the
+/// snapshot was taken. stores is complete on the first page and empty
+/// afterwards. objects carries only objects no manifest entry names. Manifests
+/// and objects the caller may not read are omitted without a count. Observed
+/// holds carry their observation time and basis, never a promise of current
+/// truth. Refusals carry empty lists, empty continuation and cursor, and
+/// complete false.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InventoryPage {
     pub outcome: InventoryOutcome,
@@ -2072,6 +2074,13 @@ struct OAInventoryListArguments {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct OAInventoryListStoreArguments {
+    store: String,
+    continuation: String,
+    limit: i64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct OAInventoryHoldersArguments {
     target: String,
 }
@@ -2214,6 +2223,11 @@ struct OAManifestsPublishResult {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct OAInventoryListResult {
+    value: InventoryPage,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OAInventoryListStoreResult {
     value: InventoryPage,
 }
 
@@ -3678,6 +3692,30 @@ fn enc_oa_manifests_publish_arguments(out: &mut Vec<u8>, v: &OAManifestsPublishA
 
 fn enc_oa_inventory_list_arguments(out: &mut Vec<u8>, v: &OAInventoryListArguments, depth: i32) {
     out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "continuation");
+    out.extend_from_slice(b": ");
+    esc(out, &v.continuation);
+    out.push(b',');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "limit");
+    out.extend_from_slice(b": ");
+    num(out, v.limit);
+    out.push(b'\n');
+    pad(out, depth);
+    out.push(b'}');
+}
+
+fn enc_oa_inventory_list_store_arguments(out: &mut Vec<u8>, v: &OAInventoryListStoreArguments, depth: i32) {
+    out.push(b'{');
+    out.push(b'\n');
+    pad(out, depth + 1);
+    esc(out, "store");
+    out.extend_from_slice(b": ");
+    esc(out, &v.store);
+    out.push(b',');
     out.push(b'\n');
     pad(out, depth + 1);
     esc(out, "continuation");
@@ -8484,6 +8522,78 @@ fn decode_oa_inventory_list_arguments(r: &mut Reader) -> Result<OAInventoryListA
     })
 }
 
+fn decode_oa_inventory_list_store_arguments(r: &mut Reader) -> Result<OAInventoryListStoreArguments, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_store: String = Default::default();
+    let mut field_continuation: String = Default::default();
+    let mut field_limit: i64 = Default::default();
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "store" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_store = r.string()?;
+                }
+                "continuation" => {
+                    if seen & 2 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 2;
+                    field_continuation = r.string()?;
+                }
+                "limit" => {
+                    if seen & 4 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 4;
+                    field_limit = r.integer(i64::MIN, i64::MAX)?;
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 7 != 7 {
+        return r.refuse("missing_field");
+    }
+    Ok(OAInventoryListStoreArguments {
+        store: field_store,
+        continuation: field_continuation,
+        limit: field_limit,
+    })
+}
+
 fn decode_oa_inventory_holders_arguments(r: &mut Reader) -> Result<OAInventoryHoldersArguments, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -10067,6 +10177,63 @@ fn decode_oa_inventory_list_result(r: &mut Reader) -> Result<OAInventoryListResu
     })
 }
 
+fn decode_oa_inventory_list_store_result(r: &mut Reader) -> Result<OAInventoryListStoreResult, Refusal> {
+    if r.at() != b'{' {
+        return r.refuse("wrong_type");
+    }
+    r.enter()?;
+    r.pos += 1;
+    let mut field_value: Option<InventoryPage> = None;
+    let mut seen: u32 = 0;
+    r.skip_ws();
+    if r.at() != b'}' {
+        loop {
+            r.skip_ws();
+            if r.at() != b'"' {
+                return r.refuse("malformed");
+            }
+            let key = r.string()?;
+            r.skip_ws();
+            if r.at() != b':' {
+                return r.refuse("malformed");
+            }
+            r.pos += 1;
+            r.skip_ws();
+            match key.as_str() {
+                "value" => {
+                    if seen & 1 != 0 {
+                        return r.refuse("duplicate_field");
+                    }
+                    seen |= 1;
+                    field_value = Some(decode_inventory_page(r)?);
+                }
+                _ => {
+                    return r.refuse("unknown_field");
+                }
+            }
+            r.skip_ws();
+            if r.at() != b',' {
+                break;
+            }
+            r.pos += 1;
+        }
+    }
+    if r.at() != b'}' {
+        return r.refuse("malformed");
+    }
+    r.pos += 1;
+    r.depth -= 1;
+    if seen & 1 != 1 {
+        return r.refuse("missing_field");
+    }
+    let Some(field_value) = field_value else {
+        return r.refuse("missing_field");
+    };
+    Ok(OAInventoryListStoreResult {
+        value: field_value,
+    })
+}
+
 fn decode_oa_inventory_holders_result(r: &mut Reader) -> Result<OAInventoryHoldersResult, Refusal> {
     if r.at() != b'{' {
         return r.refuse("wrong_type");
@@ -10667,6 +10834,10 @@ fn service_check_oa_manifests_publish_arguments(v: &OAManifestsPublishArguments)
 }
 
 fn service_check_oa_inventory_list_arguments(_v: &OAInventoryListArguments) -> Result<(), Refusal> {
+    Ok(())
+}
+
+fn service_check_oa_inventory_list_store_arguments(_v: &OAInventoryListStoreArguments) -> Result<(), Refusal> {
     Ok(())
 }
 
@@ -11287,14 +11458,27 @@ impl<T: FrameTransport> Manifests for ManifestsClient<T> {
     }
 }
 
-/// What the machine holds and who depends on it, composed from the service's
-/// own tables and every designated source.
+/// What the machine holds and who depends on it. List composes every designated
+/// source; ListStore dispatches only designated sources accepted for its exact
+/// store.
 pub trait Inventory {
     type Error;
     /// limit 1..256 combined manifests, stray objects and dangling references
     /// per page. Gated by abstraction.storage/inventory.read; each manifest and
     /// object is filtered through content.read for its digests.
     fn list(&self, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error>;
+    /// Pages one registered store's inventory. Gated by
+    /// abstraction.storage/inventory.read and the same per-digest content.read
+    /// policy as List. Only designated sources whose accepted store set
+    /// includes store are invoked; other designated sources are not read. The
+    /// source's records are filtered to this exact store. The first page
+    /// carries only this store; later pages carry none. Store is a non-empty
+    /// accepted store name of at most 256 bytes. A store not currently
+    /// designated returns invalid without reading any source. Continuations are
+    /// bound to this store and caller; using one with another store returns
+    /// forbidden. Dangling references are omitted because they carry no store
+    /// identity.
+    fn list_store(&self, store: String, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error>;
     /// Every hold on one manifest id or digest, re-observed at call time
     /// through each source's Verify: observed holds return as verified or are
     /// omitted; declared holds return as declared. Dangling references naming
@@ -11346,6 +11530,30 @@ impl<T: FrameTransport> Inventory for InventoryClient<T> {
             return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
         }
         let result = service_decode(&reply.payload, decode_oa_inventory_list_result).map_err(CallError::Refusal)?;
+        Ok(result.value)
+    }
+
+    fn list_store(&self, store: String, continuation: String, limit: i64) -> Result<InventoryPage, Self::Error> {
+        let args = OAInventoryListStoreArguments { store, continuation, limit };
+        let arguments = service_encode(&args, service_check_oa_inventory_list_store_arguments, enc_oa_inventory_list_store_arguments, decode_oa_inventory_list_store_arguments).map_err(CallError::Refusal)?;
+        let request = OAServiceFrame { version: 1, service: "abstraction.storage/inventory@1".into(), method: "ListStore".into(), arguments };
+        let frame = service_encode(&request, service_check_oa_service_frame, enc_oa_service_frame, decode_oa_service_frame).map_err(CallError::Refusal)?;
+        let reply = self.transport.exchange_frame(&frame).map_err(CallError::Transport)?;
+        let reply = service_decode(&reply, decode_oa_service_reply).map_err(CallError::Refusal)?;
+        if reply.version != 1 {
+            return Err(CallError::Dispatch("unknown_version"));
+        }
+        if reply.service != "abstraction.storage/inventory@1" || reply.method != "ListStore" {
+            return Err(CallError::Dispatch("mismatched_response"));
+        }
+        if !reply.ok {
+            let error = service_decode(&reply.payload, decode_oa_service_error).map_err(CallError::Refusal)?;
+            if error.code.is_empty() {
+                return Err(CallError::Dispatch("invalid_error"));
+            }
+            return Err(CallError::Service(ServiceError { code: error.code, message: error.message }));
+        }
+        let result = service_decode(&reply.payload, decode_oa_inventory_list_store_result).map_err(CallError::Refusal)?;
         Ok(result.value)
     }
 
