@@ -22,6 +22,13 @@ func TestFramedStorageAndInstalledCPP(t *testing.T) {
 		t.Skip("current Program proof limitation")
 	}
 	dir := t.TempDir()
+	// Native Unix IPC requires its endpoint directory to be private even when
+	// the test harness creates temporary directories with broader permissions.
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	digest := "sha256:" + strings.Repeat("a", 64)
 	if e := os.WriteFile(filepath.Join(dir, strings.Repeat("a", 64)), []byte("content fixture bytes"), 0600); e != nil {
 		t.Fatal(e)

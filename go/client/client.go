@@ -6,7 +6,7 @@ import (
 	"errors"
 	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
-	"strings"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 	"time"
 )
 
@@ -21,22 +21,11 @@ func New(endpoint string) *Client {
 func NewWithTransport(transport listen.FrameClient) *Client {
 	return &Client{transport.WithDefaults(5*time.Second, 1<<20)}
 }
-func validDigest(d string) bool {
-	if len(d) != 71 || !strings.HasPrefix(d, "sha256:") {
-		return false
-	}
-	for _, c := range d[7:] {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return false
-		}
-	}
-	return true
-}
 func validResource(r Resource) bool {
-	return r.Handle != "" && len(r.Handle) <= 128 && r.Size >= 0 && r.Verification == api.VerificationUnverified && validDigest(r.Digest)
+	return r.Handle != "" && len(r.Handle) <= 128 && r.Size >= 0 && r.Verification == api.VerificationUnverified && contentdigest.Valid(r.Digest)
 }
 func (c *Client) Open(ctx context.Context, digest string) (api.OpenResult, error) {
-	if !validDigest(digest) {
+	if !contentdigest.Valid(digest) {
 		return api.OpenResult{}, errors.New("storage: canonical SHA256 digest required")
 	}
 	if e := ctx.Err(); e != nil {
@@ -46,7 +35,7 @@ func (c *Client) Open(ctx context.Context, digest string) (api.OpenResult, error
 	if e != nil {
 		return api.OpenResult{}, e
 	}
-	if (r.Outcome == api.OpenOutcomeOpened) != (r.Resource != nil) || r.Resource != nil && (!validResource(*r.Resource) || r.Resource.Digest != digest) {
+	if r.Resource != nil && (!validResource(*r.Resource) || r.Resource.Digest != digest) {
 		return api.OpenResult{}, errors.New("storage: inconsistent open result")
 	}
 	return r, nil
@@ -68,9 +57,6 @@ func (c *Client) Read(ctx context.Context, resource Resource, offset, maxBytes i
 	return r, nil
 }
 func validateRead(r api.ReadResult, resource Resource, offset, maxBytes int64) error {
-	if (r.Outcome == api.ReadOutcomeData) != (r.Chunk != nil) {
-		return errors.New("storage: inconsistent read outcome")
-	}
 	if r.Chunk == nil {
 		return nil
 	}

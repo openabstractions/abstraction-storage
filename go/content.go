@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	cas "github.com/openabstractions/abstraction-cas/go"
 	"os"
 	"path/filepath"
 )
@@ -89,7 +90,9 @@ func (c *ContentStore) Place(digest string, size int64) (Ref, error) {
 }
 
 // Commit makes placed bytes findable, and refuses to do it for bytes that are
-// not there.
+// not there. Writers of one digest share one incoming path; a failed directory
+// flush removes the blob even when a second writer has already reported it
+// committed.
 func (c *ContentStore) Commit(r Ref) error {
 	hex := hexOf(r.Digest)
 	if hex == "" {
@@ -108,10 +111,40 @@ func (c *ContentStore) Commit(r Ref) error {
 		}
 		return err
 	}
+	// The bytes reach the disk before their name does. A failed flush leaves
+	// bytes of unknown durability; they are discarded and the commit answers
+	// unavailable, so the writer delivers them again.
+	if err := syncPath(from); err != nil {
+		_ = os.Remove(from)
+		return fmt.Errorf("%w: flushing %s: %v", ErrUnavailable, r.Digest, err)
+	}
 	// Rename, so a reader either sees no blob or a whole one. It must never see
 	// a partial file under a name that claims a digest.
-	return os.Rename(from, c.blob(hex))
+	to := c.blob(hex)
+	if err := os.Rename(from, to); err != nil {
+		return err
+	}
+	// The directory flush makes the new name survive a power cut.
+	if err := syncDir(filepath.Dir(to)); err != nil {
+		_ = os.Remove(to)
+		return fmt.Errorf("%w: flushing the blobs directory for %s: %v", ErrUnavailable, r.Digest, err)
+	}
+	return nil
 }
+
+// syncPath and syncDir are the flush points of Commit; tests replace them to
+// inject a failure.
+var (
+	syncPath = func(path string) error {
+		f, err := os.OpenFile(path, os.O_RDWR, 0)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		return f.Sync()
+	}
+	syncDir = cas.SyncDir
+)
 
 // Remove deletes the committed bytes of digest. Content already absent is
 // success, so a collector that crashed after removing can repeat itself. A

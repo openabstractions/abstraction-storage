@@ -52,6 +52,7 @@ from ._codec import (
     ListedObject,
     ListingOutcome,
     ListingPage,
+    MAX_APPEND_BYTES,
     Manifest,
     ManifestHolders,
     Manifests,
@@ -164,7 +165,9 @@ from ._codec import (
     encode_store_error,
     encode_stored,
     encode_upload,
+    from_json,
     service_name,
+    to_json,
 )
 
 __all__ = [
@@ -217,6 +220,7 @@ __all__ = [
     "ListedObject",
     "ListingOutcome",
     "ListingPage",
+    "MAX_APPEND_BYTES",
     "Manifest",
     "ManifestHolders",
     "Manifests",
@@ -329,7 +333,9 @@ __all__ = [
     "encode_store_error",
     "encode_stored",
     "encode_upload",
+    "from_json",
     "service_name",
+    "to_json",
 ]
 
 # Report every class and function as a member of this package, so help(),

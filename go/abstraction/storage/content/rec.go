@@ -2,6 +2,8 @@
 
 package content
 
+import "time"
+
 type Raw = string
 
 func escByte(out []byte, c byte) []byte {
@@ -73,64 +75,18 @@ func strs(out []byte, v []string, depth int) []byte {
 	return append(out, ']')
 }
 
+// raw writes an opaque value's bytes as they are ([DEF-A3]); whitespace
+// around the value is not part of it.
 func raw(out []byte, s string, depth int) []byte {
 	ws := func(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
-	for i := 0; i < len(s); {
-		c := s[i]
-		if ws(c) {
-			i++
-			continue
-		}
-		switch c {
-		case '"':
-			j := i + 1
-			for j < len(s) {
-				if s[j] == '\\' {
-					j += 2
-					continue
-				}
-				if s[j] == '"' {
-					j++
-					break
-				}
-				j++
-			}
-			out = append(out, s[i:j]...)
-			i = j
-		case '{', '[':
-			out = append(out, c)
-			i++
-			j := i
-			for j < len(s) && ws(s[j]) {
-				j++
-			}
-			if j < len(s) && (s[j] == '}' || s[j] == ']') {
-				out = append(out, s[j])
-				i = j + 1
-			} else {
-				depth++
-				out = append(out, '\n')
-				out = pad(out, depth)
-			}
-		case '}', ']':
-			depth--
-			out = append(out, '\n')
-			out = pad(out, depth)
-			out = append(out, c)
-			i++
-		case ',':
-			out = append(out, ',', '\n')
-			out = pad(out, depth)
-			i++
-		case ':':
-			out = append(out, ':', ' ')
-			i++
-		default:
-			out = append(out, c)
-			i++
-		}
+	i, j := 0, len(s)
+	for i < j && ws(s[i]) {
+		i++
 	}
-	return out
+	for j > i && ws(s[j-1]) {
+		j--
+	}
+	return append(out, s[i:j]...)
 }
 
 func byteLess(a, b string) bool {
@@ -312,6 +268,9 @@ func VerificationValues() []Verification {
 	return []Verification{VerificationUnverified}
 }
 
+// IsKnown reports whether v is a declared member of Verification.
+func (v Verification) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of Verification.
 func (v Verification) Known() bool {
 	_, ok := v.WireName()
@@ -436,6 +395,9 @@ func OpenOutcomeValues() []OpenOutcome {
 	return []OpenOutcome{OpenOutcomeOpened, OpenOutcomeNotFound, OpenOutcomeForbidden, OpenOutcomeInvalid, OpenOutcomeUnsupported, OpenOutcomeUnavailable, OpenOutcomeExhausted}
 }
 
+// IsKnown reports whether v is a declared member of OpenOutcome.
+func (v OpenOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of OpenOutcome.
 func (v OpenOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -555,6 +517,9 @@ func ReadOutcomeValues() []ReadOutcome {
 	return []ReadOutcome{ReadOutcomeData, ReadOutcomeGap, ReadOutcomeForbidden, ReadOutcomeInvalid, ReadOutcomeUnavailable, ReadOutcomeChanged}
 }
 
+// IsKnown reports whether v is a declared member of ReadOutcome.
+func (v ReadOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of ReadOutcome.
 func (v ReadOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -658,6 +623,9 @@ func (v *CloseOutcome) UnmarshalJSON(data []byte) error {
 func CloseOutcomeValues() []CloseOutcome {
 	return []CloseOutcome{CloseOutcomeClosed, CloseOutcomeGap, CloseOutcomeForbidden}
 }
+
+// IsKnown reports whether v is a declared member of CloseOutcome.
+func (v CloseOutcome) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of CloseOutcome.
 func (v CloseOutcome) Known() bool {
@@ -803,6 +771,9 @@ func BeginOutcomeValues() []BeginOutcome {
 	return []BeginOutcome{BeginOutcomeStarted, BeginOutcomeCommitted, BeginOutcomePresent, BeginOutcomeForbidden, BeginOutcomeInvalid, BeginOutcomeConflict, BeginOutcomeTooLarge, BeginOutcomeBusy, BeginOutcomeUnsupported, BeginOutcomeUnavailable, BeginOutcomeExhausted}
 }
 
+// IsKnown reports whether v is a declared member of BeginOutcome.
+func (v BeginOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of BeginOutcome.
 func (v BeginOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -927,6 +898,9 @@ func AppendOutcomeValues() []AppendOutcome {
 	return []AppendOutcome{AppendOutcomeAccepted, AppendOutcomeGap, AppendOutcomeForbidden, AppendOutcomeInvalid, AppendOutcomeOutOfOrder, AppendOutcomeTooLarge, AppendOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of AppendOutcome.
+func (v AppendOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of AppendOutcome.
 func (v AppendOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -1046,6 +1020,9 @@ func CommitOutcomeValues() []CommitOutcome {
 	return []CommitOutcome{CommitOutcomeCommitted, CommitOutcomeGap, CommitOutcomeForbidden, CommitOutcomeIncomplete, CommitOutcomeMismatch, CommitOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of CommitOutcome.
+func (v CommitOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of CommitOutcome.
 func (v CommitOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -1149,6 +1126,9 @@ func (v *AbortOutcome) UnmarshalJSON(data []byte) error {
 func AbortOutcomeValues() []AbortOutcome {
 	return []AbortOutcome{AbortOutcomeAborted, AbortOutcomeGap, AbortOutcomeForbidden}
 }
+
+// IsKnown reports whether v is a declared member of AbortOutcome.
+func (v AbortOutcome) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of AbortOutcome.
 func (v AbortOutcome) Known() bool {
@@ -1259,6 +1239,9 @@ func EvidenceValues() []Evidence {
 	return []Evidence{EvidenceHashed, EvidenceNamed, EvidenceForeign, EvidenceNone}
 }
 
+// IsKnown reports whether v is a declared member of Evidence.
+func (v Evidence) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of Evidence.
 func (v Evidence) Known() bool {
 	_, ok := v.WireName()
@@ -1357,6 +1340,9 @@ func (v *ChangeKind) UnmarshalJSON(data []byte) error {
 func ChangeKindValues() []ChangeKind {
 	return []ChangeKind{ChangeKindAdded, ChangeKindRemoved}
 }
+
+// IsKnown reports whether v is a declared member of ChangeKind.
+func (v ChangeKind) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of ChangeKind.
 func (v ChangeKind) Known() bool {
@@ -1472,6 +1458,9 @@ func ChangePageOutcomeValues() []ChangePageOutcome {
 	return []ChangePageOutcome{ChangePageOutcomePage, ChangePageOutcomeGap, ChangePageOutcomeForbidden, ChangePageOutcomeInvalid, ChangePageOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of ChangePageOutcome.
+func (v ChangePageOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of ChangePageOutcome.
 func (v ChangePageOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -1586,6 +1575,9 @@ func ListingOutcomeValues() []ListingOutcome {
 	return []ListingOutcome{ListingOutcomePage, ListingOutcomeGap, ListingOutcomeForbidden, ListingOutcomeInvalid, ListingOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of ListingOutcome.
+func (v ListingOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of ListingOutcome.
 func (v ListingOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -1685,6 +1677,9 @@ func AddressingValues() []Addressing {
 	return []Addressing{AddressingContent, AddressingName}
 }
 
+// IsKnown reports whether v is a declared member of Addressing.
+func (v Addressing) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of Addressing.
 func (v Addressing) Known() bool {
 	_, ok := v.WireName()
@@ -1783,6 +1778,9 @@ func (v *Placement) UnmarshalJSON(data []byte) error {
 func PlacementValues() []Placement {
 	return []Placement{PlacementLocal, PlacementRemote}
 }
+
+// IsKnown reports whether v is a declared member of Placement.
+func (v Placement) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of Placement.
 func (v Placement) Known() bool {
@@ -1888,6 +1886,9 @@ func LifetimeValues() []Lifetime {
 	return []Lifetime{LifetimeUntilReleased, LifetimeLease, LifetimeWhilePresent}
 }
 
+// IsKnown reports whether v is a declared member of Lifetime.
+func (v Lifetime) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of Lifetime.
 func (v Lifetime) Known() bool {
 	_, ok := v.WireName()
@@ -1909,6 +1910,9 @@ const (
 func AttestationValues() []Attestation {
 	return []Attestation{AttestationDeclared, AttestationObserved, AttestationVerified}
 }
+
+// IsKnown reports whether v is a declared member of Attestation.
+func (v Attestation) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of Attestation.
 func (v Attestation) Known() bool {
@@ -1936,6 +1940,9 @@ const (
 func StoreErrorKindValues() []StoreErrorKind {
 	return []StoreErrorKind{StoreErrorKindOther, StoreErrorKindMalformedIndex, StoreErrorKindUnreadableIndex, StoreErrorKindUnreadableTree, StoreErrorKindUnreadableConfiguration}
 }
+
+// IsKnown reports whether v is a declared member of StoreErrorKind.
+func (v StoreErrorKind) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of StoreErrorKind.
 func (v StoreErrorKind) Known() bool {
@@ -2064,6 +2071,9 @@ func HoldOutcomeValues() []HoldOutcome {
 	return []HoldOutcome{HoldOutcomeHeld, HoldOutcomeUnknownTarget, HoldOutcomeConflict, HoldOutcomeForbidden, HoldOutcomeInvalid, HoldOutcomeExhausted, HoldOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of HoldOutcome.
+func (v HoldOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of HoldOutcome.
 func (v HoldOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -2177,6 +2187,9 @@ func (v *ReleaseOutcome) UnmarshalJSON(data []byte) error {
 func ReleaseOutcomeValues() []ReleaseOutcome {
 	return []ReleaseOutcome{ReleaseOutcomeReleased, ReleaseOutcomeUnknown, ReleaseOutcomeForbidden, ReleaseOutcomeInvalid, ReleaseOutcomeUnavailable}
 }
+
+// IsKnown reports whether v is a declared member of ReleaseOutcome.
+func (v ReleaseOutcome) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of ReleaseOutcome.
 func (v ReleaseOutcome) Known() bool {
@@ -2297,6 +2310,9 @@ func RenewOutcomeValues() []RenewOutcome {
 	return []RenewOutcome{RenewOutcomeRenewed, RenewOutcomeUnknown, RenewOutcomeExpired, RenewOutcomeForbidden, RenewOutcomeInvalid, RenewOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of RenewOutcome.
+func (v RenewOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of RenewOutcome.
 func (v RenewOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -2410,6 +2426,9 @@ func (v *DescribeOutcome) UnmarshalJSON(data []byte) error {
 func DescribeOutcomeValues() []DescribeOutcome {
 	return []DescribeOutcome{DescribeOutcomeDescribed, DescribeOutcomeUnknown, DescribeOutcomeForbidden, DescribeOutcomeInvalid, DescribeOutcomeUnavailable}
 }
+
+// IsKnown reports whether v is a declared member of DescribeOutcome.
+func (v DescribeOutcome) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of DescribeOutcome.
 func (v DescribeOutcome) Known() bool {
@@ -2540,6 +2559,9 @@ func PublishOutcomeValues() []PublishOutcome {
 	return []PublishOutcome{PublishOutcomePublished, PublishOutcomePresent, PublishOutcomeIncomplete, PublishOutcomeConflict, PublishOutcomeForbidden, PublishOutcomeInvalid, PublishOutcomeExhausted, PublishOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of PublishOutcome.
+func (v PublishOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of PublishOutcome.
 func (v PublishOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -2653,6 +2675,9 @@ func (v *InventoryOutcome) UnmarshalJSON(data []byte) error {
 func InventoryOutcomeValues() []InventoryOutcome {
 	return []InventoryOutcome{InventoryOutcomePage, InventoryOutcomeGap, InventoryOutcomeForbidden, InventoryOutcomeInvalid, InventoryOutcomeUnavailable}
 }
+
+// IsKnown reports whether v is a declared member of InventoryOutcome.
+func (v InventoryOutcome) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of InventoryOutcome.
 func (v InventoryOutcome) Known() bool {
@@ -2783,6 +2808,9 @@ func RemoveOutcomeValues() []RemoveOutcome {
 	return []RemoveOutcome{RemoveOutcomeRemoved, RemoveOutcomeNotFound, RemoveOutcomeHeld, RemoveOutcomeBusy, RemoveOutcomeUnsupported, RemoveOutcomeForbidden, RemoveOutcomeInvalid, RemoveOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of RemoveOutcome.
+func (v RemoveOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of RemoveOutcome.
 func (v RemoveOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -2891,6 +2919,9 @@ func (v *SourceDescriptionOutcome) UnmarshalJSON(data []byte) error {
 func SourceDescriptionOutcomeValues() []SourceDescriptionOutcome {
 	return []SourceDescriptionOutcome{SourceDescriptionOutcomeDescribed, SourceDescriptionOutcomeForbidden, SourceDescriptionOutcomeInvalid, SourceDescriptionOutcomeUnavailable}
 }
+
+// IsKnown reports whether v is a declared member of SourceDescriptionOutcome.
+func (v SourceDescriptionOutcome) IsKnown() bool { return v.Known() }
 
 // Known reports whether v is a member of SourceDescriptionOutcome.
 func (v SourceDescriptionOutcome) Known() bool {
@@ -3006,6 +3037,9 @@ func SourceChangeKindValues() []SourceChangeKind {
 	return []SourceChangeKind{SourceChangeKindAdded, SourceChangeKindRemoved, SourceChangeKindHeld, SourceChangeKindReleased, SourceChangeKindStoreChanged}
 }
 
+// IsKnown reports whether v is a declared member of SourceChangeKind.
+func (v SourceChangeKind) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of SourceChangeKind.
 func (v SourceChangeKind) Known() bool {
 	_, ok := v.WireName()
@@ -3120,6 +3154,9 @@ func SourcePageOutcomeValues() []SourcePageOutcome {
 	return []SourcePageOutcome{SourcePageOutcomePage, SourcePageOutcomeGap, SourcePageOutcomeForbidden, SourcePageOutcomeInvalid, SourcePageOutcomeUnavailable}
 }
 
+// IsKnown reports whether v is a declared member of SourcePageOutcome.
+func (v SourcePageOutcome) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of SourcePageOutcome.
 func (v SourcePageOutcome) Known() bool {
 	_, ok := v.WireName()
@@ -3147,6 +3184,9 @@ func ServiceErrorCodeValues() []ServiceErrorCode {
 	return []ServiceErrorCode{ServiceErrorCodeHandlerError, ServiceErrorCodeInvalidResult, ServiceErrorCodeUnknownVersion, ServiceErrorCodeUnknownService, ServiceErrorCodeUnknownMethod, ServiceErrorCodeWrongMode, ServiceErrorCodeCallerUnavailable, ServiceErrorCodeIdentityRequired}
 }
 
+// IsKnown reports whether v is a declared member of ServiceErrorCode.
+func (v ServiceErrorCode) IsKnown() bool { return v.Known() }
+
 // Known reports whether v is a member of ServiceErrorCode.
 func (v ServiceErrorCode) Known() bool {
 	switch v {
@@ -3155,6 +3195,589 @@ func (v ServiceErrorCode) Known() bool {
 	}
 	return false
 }
+
+// EndpointServiceReadiness is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseEndpointServiceReadiness preserve the exact wire words.
+type EndpointServiceReadiness uint32
+
+const (
+	EndpointServiceReadinessReady    EndpointServiceReadiness = 1
+	EndpointServiceReadinessNotReady EndpointServiceReadiness = 2
+	EndpointServiceReadinessUnknown  EndpointServiceReadiness = 3
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v EndpointServiceReadiness) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v EndpointServiceReadiness) WireName() (string, bool) {
+	switch v {
+	case EndpointServiceReadinessReady:
+		return "ready", true
+	case EndpointServiceReadinessNotReady:
+		return "not_ready", true
+	case EndpointServiceReadinessUnknown:
+		return "unknown", true
+	}
+	return "", false
+}
+
+// ParseEndpointServiceReadiness returns the member named by an exact wire word.
+func ParseEndpointServiceReadiness(word string) (EndpointServiceReadiness, bool) {
+	switch word {
+	case "ready":
+		return EndpointServiceReadinessReady, true
+	case "not_ready":
+		return EndpointServiceReadinessNotReady, true
+	case "unknown":
+		return EndpointServiceReadinessUnknown, true
+	}
+	return EndpointServiceReadiness(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v EndpointServiceReadiness) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *EndpointServiceReadiness) UnmarshalText(text []byte) error {
+	word, ok := ParseEndpointServiceReadiness(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v EndpointServiceReadiness) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *EndpointServiceReadiness) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseEndpointServiceReadiness(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// EndpointServiceReadinessValues returns every member of EndpointServiceReadiness in declaration order, in a new slice.
+func EndpointServiceReadinessValues() []EndpointServiceReadiness {
+	return []EndpointServiceReadiness{EndpointServiceReadinessReady, EndpointServiceReadinessNotReady, EndpointServiceReadinessUnknown}
+}
+
+// IsKnown reports whether v is a declared member of EndpointServiceReadiness.
+func (v EndpointServiceReadiness) IsKnown() bool { return v.Known() }
+
+// Known reports whether v is a member of EndpointServiceReadiness.
+func (v EndpointServiceReadiness) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// EndpointRefusalSource is an open vocabulary: a reader keeps a word it has never heard, so
+// a value may be none of the constants below. EndpointRefusalSource(word) and string(v)
+// convert between the raw word and the vocabulary.
+type EndpointRefusalSource string
+
+const (
+	EndpointRefusalSourceRights      EndpointRefusalSource = "rights"
+	EndpointRefusalSourceCredentials EndpointRefusalSource = "credentials"
+	EndpointRefusalSourceLicense     EndpointRefusalSource = "license"
+	EndpointRefusalSourceTerms       EndpointRefusalSource = "terms"
+	EndpointRefusalSourceIdentity    EndpointRefusalSource = "identity"
+	EndpointRefusalSourceOS          EndpointRefusalSource = "os"
+)
+
+// EndpointRefusalSourceValues returns every member of EndpointRefusalSource in declaration order, in a new slice.
+func EndpointRefusalSourceValues() []EndpointRefusalSource {
+	return []EndpointRefusalSource{EndpointRefusalSourceRights, EndpointRefusalSourceCredentials, EndpointRefusalSourceLicense, EndpointRefusalSourceTerms, EndpointRefusalSourceIdentity, EndpointRefusalSourceOS}
+}
+
+// IsKnown reports whether v is a declared member of EndpointRefusalSource.
+func (v EndpointRefusalSource) IsKnown() bool { return v.Known() }
+
+// Known reports whether v is a member of EndpointRefusalSource.
+func (v EndpointRefusalSource) Known() bool {
+	switch v {
+	case EndpointRefusalSourceRights, EndpointRefusalSourceCredentials, EndpointRefusalSourceLicense, EndpointRefusalSourceTerms, EndpointRefusalSourceIdentity, EndpointRefusalSourceOS:
+		return true
+	}
+	return false
+}
+
+// EndpointRefusalDecision is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseEndpointRefusalDecision preserve the exact wire words.
+type EndpointRefusalDecision uint32
+
+const (
+	EndpointRefusalDecisionDenied     EndpointRefusalDecision = 1
+	EndpointRefusalDecisionNotGranted EndpointRefusalDecision = 2
+	EndpointRefusalDecisionPersonOnly EndpointRefusalDecision = 3
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v EndpointRefusalDecision) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v EndpointRefusalDecision) WireName() (string, bool) {
+	switch v {
+	case EndpointRefusalDecisionDenied:
+		return "denied", true
+	case EndpointRefusalDecisionNotGranted:
+		return "not_granted", true
+	case EndpointRefusalDecisionPersonOnly:
+		return "person_only", true
+	}
+	return "", false
+}
+
+// ParseEndpointRefusalDecision returns the member named by an exact wire word.
+func ParseEndpointRefusalDecision(word string) (EndpointRefusalDecision, bool) {
+	switch word {
+	case "denied":
+		return EndpointRefusalDecisionDenied, true
+	case "not_granted":
+		return EndpointRefusalDecisionNotGranted, true
+	case "person_only":
+		return EndpointRefusalDecisionPersonOnly, true
+	}
+	return EndpointRefusalDecision(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v EndpointRefusalDecision) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *EndpointRefusalDecision) UnmarshalText(text []byte) error {
+	word, ok := ParseEndpointRefusalDecision(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v EndpointRefusalDecision) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *EndpointRefusalDecision) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseEndpointRefusalDecision(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// EndpointRefusalDecisionValues returns every member of EndpointRefusalDecision in declaration order, in a new slice.
+func EndpointRefusalDecisionValues() []EndpointRefusalDecision {
+	return []EndpointRefusalDecision{EndpointRefusalDecisionDenied, EndpointRefusalDecisionNotGranted, EndpointRefusalDecisionPersonOnly}
+}
+
+// IsKnown reports whether v is a declared member of EndpointRefusalDecision.
+func (v EndpointRefusalDecision) IsKnown() bool { return v.Known() }
+
+// Known reports whether v is a member of EndpointRefusalDecision.
+func (v EndpointRefusalDecision) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// EndpointRefusalAsk is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseEndpointRefusalAsk preserve the exact wire words.
+type EndpointRefusalAsk uint32
+
+const (
+	EndpointRefusalAskAvailable EndpointRefusalAsk = 1
+	EndpointRefusalAskNone      EndpointRefusalAsk = 2
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v EndpointRefusalAsk) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v EndpointRefusalAsk) WireName() (string, bool) {
+	switch v {
+	case EndpointRefusalAskAvailable:
+		return "available", true
+	case EndpointRefusalAskNone:
+		return "none", true
+	}
+	return "", false
+}
+
+// ParseEndpointRefusalAsk returns the member named by an exact wire word.
+func ParseEndpointRefusalAsk(word string) (EndpointRefusalAsk, bool) {
+	switch word {
+	case "available":
+		return EndpointRefusalAskAvailable, true
+	case "none":
+		return EndpointRefusalAskNone, true
+	}
+	return EndpointRefusalAsk(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v EndpointRefusalAsk) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *EndpointRefusalAsk) UnmarshalText(text []byte) error {
+	word, ok := ParseEndpointRefusalAsk(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v EndpointRefusalAsk) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *EndpointRefusalAsk) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseEndpointRefusalAsk(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// EndpointRefusalAskValues returns every member of EndpointRefusalAsk in declaration order, in a new slice.
+func EndpointRefusalAskValues() []EndpointRefusalAsk {
+	return []EndpointRefusalAsk{EndpointRefusalAskAvailable, EndpointRefusalAskNone}
+}
+
+// IsKnown reports whether v is a declared member of EndpointRefusalAsk.
+func (v EndpointRefusalAsk) IsKnown() bool { return v.Known() }
+
+// Known reports whether v is a member of EndpointRefusalAsk.
+func (v EndpointRefusalAsk) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// EndpointProducerCheckState is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseEndpointProducerCheckState preserve the exact wire words.
+type EndpointProducerCheckState uint32
+
+const (
+	EndpointProducerCheckStateCurrent    EndpointProducerCheckState = 1
+	EndpointProducerCheckStateRepaired   EndpointProducerCheckState = 2
+	EndpointProducerCheckStateStale      EndpointProducerCheckState = 3
+	EndpointProducerCheckStateRefused    EndpointProducerCheckState = 4
+	EndpointProducerCheckStateUnverified EndpointProducerCheckState = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v EndpointProducerCheckState) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v EndpointProducerCheckState) WireName() (string, bool) {
+	switch v {
+	case EndpointProducerCheckStateCurrent:
+		return "current", true
+	case EndpointProducerCheckStateRepaired:
+		return "repaired", true
+	case EndpointProducerCheckStateStale:
+		return "stale", true
+	case EndpointProducerCheckStateRefused:
+		return "refused", true
+	case EndpointProducerCheckStateUnverified:
+		return "unverified", true
+	}
+	return "", false
+}
+
+// ParseEndpointProducerCheckState returns the member named by an exact wire word.
+func ParseEndpointProducerCheckState(word string) (EndpointProducerCheckState, bool) {
+	switch word {
+	case "current":
+		return EndpointProducerCheckStateCurrent, true
+	case "repaired":
+		return EndpointProducerCheckStateRepaired, true
+	case "stale":
+		return EndpointProducerCheckStateStale, true
+	case "refused":
+		return EndpointProducerCheckStateRefused, true
+	case "unverified":
+		return EndpointProducerCheckStateUnverified, true
+	}
+	return EndpointProducerCheckState(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v EndpointProducerCheckState) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *EndpointProducerCheckState) UnmarshalText(text []byte) error {
+	word, ok := ParseEndpointProducerCheckState(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v EndpointProducerCheckState) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *EndpointProducerCheckState) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseEndpointProducerCheckState(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// EndpointProducerCheckStateValues returns every member of EndpointProducerCheckState in declaration order, in a new slice.
+func EndpointProducerCheckStateValues() []EndpointProducerCheckState {
+	return []EndpointProducerCheckState{EndpointProducerCheckStateCurrent, EndpointProducerCheckStateRepaired, EndpointProducerCheckStateStale, EndpointProducerCheckStateRefused, EndpointProducerCheckStateUnverified}
+}
+
+// IsKnown reports whether v is a declared member of EndpointProducerCheckState.
+func (v EndpointProducerCheckState) IsKnown() bool { return v.Known() }
+
+// Known reports whether v is a member of EndpointProducerCheckState.
+func (v EndpointProducerCheckState) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+// EndpointDescriptionOutcome is a closed vocabulary. Its numeric values are private implementation
+// tags; String and ParseEndpointDescriptionOutcome preserve the exact wire words.
+type EndpointDescriptionOutcome uint32
+
+const (
+	EndpointDescriptionOutcomeDescribed   EndpointDescriptionOutcome = 1
+	EndpointDescriptionOutcomeForbidden   EndpointDescriptionOutcome = 2
+	EndpointDescriptionOutcomeUnavailable EndpointDescriptionOutcome = 3
+	EndpointDescriptionOutcomeInvalid     EndpointDescriptionOutcome = 4
+	EndpointDescriptionOutcomeUnsupported EndpointDescriptionOutcome = 5
+)
+
+// String returns v's exact wire word, or the empty string for an invalid value.
+func (v EndpointDescriptionOutcome) String() string {
+	word, _ := v.WireName()
+	return word
+}
+
+// WireName returns v's exact wire word and whether v names a member.
+func (v EndpointDescriptionOutcome) WireName() (string, bool) {
+	switch v {
+	case EndpointDescriptionOutcomeDescribed:
+		return "described", true
+	case EndpointDescriptionOutcomeForbidden:
+		return "forbidden", true
+	case EndpointDescriptionOutcomeUnavailable:
+		return "unavailable", true
+	case EndpointDescriptionOutcomeInvalid:
+		return "invalid", true
+	case EndpointDescriptionOutcomeUnsupported:
+		return "unsupported", true
+	}
+	return "", false
+}
+
+// ParseEndpointDescriptionOutcome returns the member named by an exact wire word.
+func ParseEndpointDescriptionOutcome(word string) (EndpointDescriptionOutcome, bool) {
+	switch word {
+	case "described":
+		return EndpointDescriptionOutcomeDescribed, true
+	case "forbidden":
+		return EndpointDescriptionOutcomeForbidden, true
+	case "unavailable":
+		return EndpointDescriptionOutcomeUnavailable, true
+	case "invalid":
+		return EndpointDescriptionOutcomeInvalid, true
+	case "unsupported":
+		return EndpointDescriptionOutcomeUnsupported, true
+	}
+	return EndpointDescriptionOutcome(0), false
+}
+
+// MarshalText preserves the member's exact wire word for standard text users,
+// including JSON object keys. Invalid and zero values are refused.
+func (v EndpointDescriptionOutcome) MarshalText() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return []byte(word), nil
+}
+
+// UnmarshalText accepts an exact wire word and refuses unknown text.
+func (v *EndpointDescriptionOutcome) UnmarshalText(text []byte) error {
+	word, ok := ParseEndpointDescriptionOutcome(string(text))
+	if !ok {
+		return &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	*v = word
+	return nil
+}
+
+// MarshalJSON keeps closed vocabularies as JSON strings rather than their
+// private numeric implementation tags.
+func (v EndpointDescriptionOutcome) MarshalJSON() ([]byte, error) {
+	word, ok := v.WireName()
+	if !ok {
+		return nil, &Refusal{Word: "bad_enum", Offset: 0}
+	}
+	return esc(nil, word), nil
+}
+
+// UnmarshalJSON accepts only an exact JSON string member. Numbers, null and
+// unknown strings are refused by the same codec rules as generated records.
+func (v *EndpointDescriptionOutcome) UnmarshalJSON(data []byte) error {
+	r := reader{buf: data}
+	r.ws()
+	word, err := r.str()
+	if err != nil {
+		return err
+	}
+	r.ws()
+	if r.pos != len(r.buf) {
+		return r.refuse("trailing_bytes")
+	}
+	parsed, ok := ParseEndpointDescriptionOutcome(word)
+	if !ok {
+		return r.refuse("bad_enum")
+	}
+	*v = parsed
+	return nil
+}
+
+// EndpointDescriptionOutcomeValues returns every member of EndpointDescriptionOutcome in declaration order, in a new slice.
+func EndpointDescriptionOutcomeValues() []EndpointDescriptionOutcome {
+	return []EndpointDescriptionOutcome{EndpointDescriptionOutcomeDescribed, EndpointDescriptionOutcomeForbidden, EndpointDescriptionOutcomeUnavailable, EndpointDescriptionOutcomeInvalid, EndpointDescriptionOutcomeUnsupported}
+}
+
+// IsKnown reports whether v is a declared member of EndpointDescriptionOutcome.
+func (v EndpointDescriptionOutcome) IsKnown() bool { return v.Known() }
+
+// Known reports whether v is a member of EndpointDescriptionOutcome.
+func (v EndpointDescriptionOutcome) Known() bool {
+	_, ok := v.WireName()
+	return ok
+}
+
+const MaxAppendBytes int32 = 65536
 
 var InventorySourceErrorCodes = []string{"caller_unavailable", "identity_required"}
 
@@ -3290,6 +3913,7 @@ type ListingPage struct {
 	Cursor       string
 }
 
+// [Object](https://openabstractions.github.io/reference.html#concept-storage.content-object):
 // One stored object, by stat only. locator is opaque provider binding data, as
 // storage Ref.locator; applications never treat it as a path or as authority.
 // partial marks an interrupted transfer the store spells as such. digest is
@@ -3320,6 +3944,7 @@ type Entry struct {
 	Annotations map[string]string
 }
 
+// [Name](https://openabstractions.github.io/reference.html#concept-storage.manifest-name):
 // A name a program uses for this manifest, in that program's own vocabulary.
 // scheme is an open catalogue; seeds ollama, hf, lmstudio, comfyui, flm, jan,
 // oci, stabilitymatrix, pinokio, swarmui.
@@ -3360,13 +3985,14 @@ type Manifest struct {
 // established it; no domain inherits another's proofs. program is the holder's
 // name in the holder vocabulary (ollama, lemonade, comfyui). instance
 // distinguishes installations of one program: for declared holds the bound
-// peer's normalized executable identity as rights Subject.program spells it;
-// for observed holds the source's opaque identity for that installation (a
-// Stability Matrix package name, a Pinokio app, an install locator). For
-// declared holds account and instance are the receiving boundary's bound peer,
-// asserted by the service; for observed holds they are the source's words and
-// established_by is the source program the service bound. Never a
-// caller-supplied claim.
+// peer's normalized executable identity as [rights
+// Subject.program](https://openabstractions.github.io/reference.html#concept-rights.subject)
+// spells it; for observed holds the source's opaque identity for that
+// installation (a Stability Matrix package name, a Pinokio app, an install
+// locator). For declared holds account and instance are the receiving
+// boundary's bound peer, asserted by the service; for observed holds they are
+// the source's words and established_by is the source program the service
+// bound. Never a caller-supplied claim.
 type Holder struct {
 	Account       string
 	Program       string
@@ -3558,6 +4184,81 @@ type SourcePage struct {
 	Continuation string
 	Complete     bool
 	Cursor       string
+}
+
+// The one refusal record every OA service carries beside a refusing outcome
+// (RIGHTS-E3; conventions CONV-E4). source names the authority that refused:
+// rights, credentials, license, terms, identity or os. decision is denied for
+// an explicit refusal, not_granted where no rule permits, and person_only where
+// only the person may answer the question. ask says whether asking can change
+// the answer: available, or none. action is the exact registered
+// <owner>/<name>; question the pending question's id; credential the
+// credential's name; retry_after_ms the earliest useful retry in milliseconds,
+// omitted when zero. Stop asking is denied with ask none. Current carriers
+// include config@2, messages@1, registry@3, endpoint@2 and chat@3, declared in
+// config.thrift, messages.thrift, registration.thrift and inference.thrift.
+// Other services adopt it in their scheduled versions.
+type EndpointRefusalDetail struct {
+	Source       EndpointRefusalSource
+	Decision     EndpointRefusalDecision
+	Ask          EndpointRefusalAsk
+	Action       string
+	Question     string
+	Credential   string
+	RetryAfterMs int64
+}
+
+// Producer assertion validated by the runtime. Kind is the governed open
+// build-time vocabulary <owner>/<name>, not a display string or an authority
+// claim. copy identifies one copy within the kind. reason follows D87
+// domain:word:detail as open display text. checked is the producer's claimed
+// check time. Custom/unknown copies are unverified; readiness remains
+// independent. No runtime kind-registration method is introduced.
+type EndpointProducerCheck struct {
+	Kind    string
+	Copy    string
+	State   EndpointProducerCheckState
+	Reason  string
+	Checked string
+}
+
+// endpoint@2 service observation. definition_hash is sha256: plus64 lowercase
+// hex over this service version's canonical wire form (CONV-V2), verified by
+// the definition-hash owner. reason retains readiness errors and is empty when
+// ready. capabilities remain display-only. Program-level producer checks belong
+// to EndpointDescription and are independent of service readiness.
+type EndpointServiceState struct {
+	Service        string
+	Readiness      EndpointServiceReadiness
+	Reason         string
+	Guarantees     []string
+	Capabilities   map[string]string
+	DefinitionHash string
+}
+
+// Complete endpoint@2 description with each advertised service's definition
+// hash and one program-level producer-check list. Checks are independent of
+// service readiness; absence means unobserved, never verified.
+// Forbidden/unavailable authority refusals carry the single Rights-owned
+// EndpointRefusalDetail; other outcomes omit it. Unsupported carries the
+// existing bounded reason with D87 unsupported:not_implemented words; no closed
+// staged-reason vocabulary is frozen. Non-described replies disclose no
+// program/version/services/checks. Endpoint@1 and its closed
+// EndpointDescription/EndpointServiceState remain unchanged. The compact value
+// ceiling excluding insignificant JSON whitespace is IPC-F1; an oversized whole
+// reply is unavailable/bound:reply_bytes without truncation.
+type EndpointDescription struct {
+	Outcome  EndpointDescriptionOutcome
+	Program  string
+	Version  string
+	Services []EndpointServiceState
+	Refusal  *EndpointRefusalDetail
+	Reason   string
+	Checks   []EndpointProducerCheck
+}
+
+type EndpointDescriptionResult struct {
+	Value EndpointDescription
 }
 
 type oaContentReaderOpenArguments struct {
@@ -5066,6 +5767,356 @@ func encSourcePage(out []byte, v *SourcePage, depth int) []byte {
 	return append(out, '}')
 }
 
+func encEndpointRefusalDetail(out []byte, v *EndpointRefusalDetail, depth int) []byte {
+	if depth < 0 || depth >= 64 {
+		panic(&Refusal{Word: "depth_exceeded"})
+	}
+	if n := len(v.Action); n != 0 && (n < 1 || n > 128) {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	if n := len(v.Question); n != 0 && (n < 1 || n > 128) {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	if n := len(v.Credential); n != 0 && (n < 1 || n > 64) {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	if v.RetryAfterMs < 0 || v.RetryAfterMs > 86400000 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	if !(v.Decision).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	if !(v.Ask).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "source")
+	out = append(out, ':', ' ')
+	out = esc(out, string(v.Source))
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "decision")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Decision.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "ask")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Ask.String())
+	if v.Action != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "action")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Action)
+	}
+	if v.Question != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "question")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Question)
+	}
+	if v.Credential != "" {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "credential")
+		out = append(out, ':', ' ')
+		out = esc(out, v.Credential)
+	}
+	if v.RetryAfterMs != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "retry_after_ms")
+		out = append(out, ':', ' ')
+		out = num(out, v.RetryAfterMs)
+	}
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encEndpointProducerCheck(out []byte, v *EndpointProducerCheck, depth int) []byte {
+	if depth < 0 || depth >= 1000 {
+		panic(&Refusal{Word: "depth_exceeded"})
+	}
+	if n := len(v.Kind); n < 1 || n > 128 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for _, c := range v.Kind {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	if n := len(v.Copy); n > 256 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for _, c := range v.Copy {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	if n := len(v.Reason); n > 256 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for _, c := range v.Reason {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	if !(v.State).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "kind")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Kind)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "copy")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Copy)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "state")
+	out = append(out, ':', ' ')
+	out = esc(out, v.State.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "reason")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Reason)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "checked")
+	out = append(out, ':', ' ')
+	out = esc(out, writeTimestamp(v.Checked))
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encEndpointServiceState(out []byte, v *EndpointServiceState, depth int) []byte {
+	if depth < 0 || depth >= 1000 {
+		panic(&Refusal{Word: "depth_exceeded"})
+	}
+	if n := len(v.Service); n < 1 || n > 128 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for _, c := range v.Service {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	if n := len(v.Reason); n > 256 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for _, c := range v.Reason {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	if n := len(v.Guarantees); n > 64 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for _, oaElement := range v.Guarantees {
+		if n := len(oaElement); n < 1 || n > 128 {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	for _, oaElement := range v.Guarantees {
+		for _, c := range oaElement {
+			if c < 0x20 || c >= 0x7f && c <= 0x9f {
+				panic(&Refusal{Word: "bad_value", Offset: 0})
+			}
+		}
+	}
+	if n := len(v.Capabilities); n > 32 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for oaElement := range v.Capabilities {
+		if n := len(oaElement); n < 1 || n > 64 {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	for oaElement := range v.Capabilities {
+		for _, c := range oaElement {
+			if c < 0x20 || c >= 0x7f && c <= 0x9f {
+				panic(&Refusal{Word: "bad_value", Offset: 0})
+			}
+		}
+	}
+	for _, oaElement := range v.Capabilities {
+		if n := len(oaElement); n > 256 {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	if n := len(v.DefinitionHash); n < 71 || n > 71 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for _, c := range v.DefinitionHash {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	if !(v.Readiness).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "service")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Service)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "readiness")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Readiness.String())
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "reason")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Reason)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "guarantees")
+	out = append(out, ':', ' ')
+	out = strs(out, v.Guarantees, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "capabilities")
+	out = append(out, ':', ' ')
+	out = strmap(out, v.Capabilities, depth+1)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "definition_hash")
+	out = append(out, ':', ' ')
+	out = esc(out, v.DefinitionHash)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
+func encEndpointDescription(out []byte, v *EndpointDescription, depth int) []byte {
+	if depth < 0 || depth >= 1000 {
+		panic(&Refusal{Word: "depth_exceeded"})
+	}
+	encodedCounter := compactEncodedCounter{start: len(out), pos: len(out)}
+	if n := len(v.Program); n > 256 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	if n := len(v.Version); n > 256 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	if n := len(v.Services); n > 64 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	if n := len(v.Reason); n > 256 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	for _, c := range v.Reason {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			panic(&Refusal{Word: "bad_value", Offset: 0})
+		}
+	}
+	if n := len(v.Checks); n > 64 {
+		panic(&Refusal{Word: "bad_value", Offset: 0})
+	}
+	if !(v.Outcome).Known() {
+		panic(&Refusal{Word: "bad_enum", Offset: 0})
+	}
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "outcome")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Outcome.String())
+	encodedCounter.check(out, 1048576)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "program")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Program)
+	encodedCounter.check(out, 1048576)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "version")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Version)
+	encodedCounter.check(out, 1048576)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "services")
+	out = append(out, ':', ' ')
+	out = encList(out, v.Services, depth+1, encEndpointServiceState)
+	encodedCounter.check(out, 1048576)
+	if v.Refusal != nil {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "refusal")
+		out = append(out, ':', ' ')
+		out = encEndpointRefusalDetail(out, v.Refusal, depth+1)
+	}
+	encodedCounter.check(out, 1048576)
+	out = append(out, ',')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "reason")
+	out = append(out, ':', ' ')
+	out = esc(out, v.Reason)
+	encodedCounter.check(out, 1048576)
+	if len(v.Checks) != 0 {
+		out = append(out, ',')
+		out = append(out, '\n')
+		out = pad(out, depth+1)
+		out = esc(out, "checks")
+		out = append(out, ':', ' ')
+		out = encList(out, v.Checks, depth+1, encEndpointProducerCheck)
+	}
+	encodedCounter.check(out, 1048576)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	out = append(out, '}')
+	encodedCounter.check(out, 1048576)
+	return out
+}
+
+func encEndpointDescriptionResult(out []byte, v *EndpointDescriptionResult, depth int) []byte {
+	out = append(out, '{')
+	out = append(out, '\n')
+	out = pad(out, depth+1)
+	out = esc(out, "value")
+	out = append(out, ':', ' ')
+	out = encEndpointDescription(out, &v.Value, depth+1)
+	out = append(out, '\n')
+	out = pad(out, depth)
+	return append(out, '}')
+}
+
 func encOAContentReaderOpenArguments(out []byte, v *oaContentReaderOpenArguments, depth int) []byte {
 	out = append(out, '{')
 	out = append(out, '\n')
@@ -5900,10 +6951,22 @@ func decimal(n int64) string { return string(num(nil, n)) }
 const depthLimit = 64
 
 type reader struct {
-	buf   []byte
-	pos   int
-	depth int
- limit int
+	buf     []byte
+	pos     int
+	depth   int
+	limit   int
+	ceiling int
+}
+
+func (r *reader) depthLimit() int {
+	ceiling := depthLimit
+	if r.ceiling > 0 {
+		ceiling = r.ceiling
+	}
+	if r.limit > 0 && r.limit < ceiling {
+		return r.limit
+	}
+	return ceiling
 }
 
 func (r *reader) refuse(word string) error { return &Refusal{Word: word, Offset: r.pos} }
@@ -6615,6 +7678,86 @@ func writeTimestamp(s string) string {
 		panic(&Refusal{Word: "bad_timestamp", Offset: 0})
 	}
 	return result
+}
+
+// TimestampLayout is the contract's UTC timestamp write layout.
+const TimestampLayout = "2006-01-02T15:04:05.000000Z"
+
+// FormatTimestamp returns the contract's UTC timestamp with six fractional digits.
+func FormatTimestamp(at time.Time) string { return at.UTC().Format(TimestampLayout) }
+
+type compactEncodedCounter struct {
+	start, pos, count int
+	quoted, escaped   bool
+}
+
+func (c *compactEncodedCounter) check(out []byte, limit int) {
+	if len(out)-c.start > 1048576 {
+		panic(&Refusal{Word: "encoded_size", Offset: 0})
+	}
+	for ; c.pos < len(out); c.pos++ {
+		b := out[c.pos]
+		if !c.quoted && (b == ' ' || b == '\t' || b == '\r' || b == '\n') {
+			continue
+		}
+		c.count++
+		if c.count > limit {
+			panic(&Refusal{Word: "encoded_size", Offset: 0})
+		}
+		if c.quoted {
+			if c.escaped {
+				c.escaped = false
+			} else if b == '\\' {
+				c.escaped = true
+			} else if b == '"' {
+				c.quoted = false
+			}
+		} else if b == '"' {
+			c.quoted = true
+		}
+	}
+}
+
+func (r *reader) checkEncodedSize(limit int) error {
+	depth, quoted, escaped, count := r.depth, false, false, 0
+	for i := r.pos; i < len(r.buf); i++ {
+		if i-r.pos >= 1048576 {
+			return r.refuse("encoded_size")
+		}
+		c := r.buf[i]
+		if !quoted && (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+			continue
+		}
+		count++
+		if count > limit {
+			return r.refuse("encoded_size")
+		}
+		if quoted {
+			if escaped {
+				escaped = false
+			} else if c == '\\' {
+				escaped = true
+			} else if c == '"' {
+				quoted = false
+			}
+		} else {
+			switch c {
+			case '"':
+				quoted = true
+			case '{', '[':
+				depth++
+				if depth > r.depthLimit() {
+					return r.refuse("depth_exceeded")
+				}
+			case '}', ']':
+				depth--
+				if depth <= r.depth {
+					return nil
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (r *reader) decodeResource() (*Resource, error) {
@@ -10109,6 +11252,706 @@ func (r *reader) decodeSourcePage() (*SourcePage, error) {
 	return v, nil
 }
 
+func (r *reader) decodeEndpointRefusalDetail() (*EndpointRefusalDetail, error) {
+	previousCeiling := r.ceiling
+	defer func() { r.ceiling = previousCeiling }()
+	r.ceiling = 64
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &EndpointRefusalDetail{}
+	var unknownKeys map[string]bool
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "source":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Source = EndpointRefusalSource(x)
+			case "decision":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseEndpointRefusalDecision(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Decision = word
+			case "ask":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseEndpointRefusalAsk(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Ask = word
+			case "action":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Action = x
+			case "question":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Question = x
+			case "credential":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Credential = x
+			case "retry_after_ms":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := r.integer(-9223372036854775808, 9223372036854775807)
+				if err != nil {
+					return nil, err
+				}
+				v.RetryAfterMs = x
+			default:
+				if unknownKeys[key] {
+					return nil, r.refuse("duplicate_key")
+				}
+				if unknownKeys == nil {
+					unknownKeys = map[string]bool{}
+				}
+				unknownKeys[key] = true
+				if err := r.skipValue(); err != nil {
+					return nil, err
+				}
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&7 != 7 {
+		return nil, r.refuse("missing_field")
+	}
+	if n := len(v.Action); n != 0 && (n < 1 || n > 128) {
+		return nil, r.refuse("bad_value")
+	}
+	if n := len(v.Question); n != 0 && (n < 1 || n > 128) {
+		return nil, r.refuse("bad_value")
+	}
+	if n := len(v.Credential); n != 0 && (n < 1 || n > 64) {
+		return nil, r.refuse("bad_value")
+	}
+	if v.RetryAfterMs < 0 || v.RetryAfterMs > 86400000 {
+		return nil, r.refuse("bad_value")
+	}
+	if !(v.Decision).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	if !(v.Ask).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeEndpointProducerCheck() (*EndpointProducerCheck, error) {
+	previousCeiling := r.ceiling
+	defer func() { r.ceiling = previousCeiling }()
+	r.ceiling = 1000
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &EndpointProducerCheck{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "kind":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Kind = x
+			case "copy":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Copy = x
+			case "state":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseEndpointProducerCheckState(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.State = word
+			case "reason":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reason = x
+			case "checked":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.timestamp()
+				if err != nil {
+					return nil, err
+				}
+				v.Checked = x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&31 != 31 {
+		return nil, r.refuse("missing_field")
+	}
+	if n := len(v.Kind); n < 1 || n > 128 {
+		return nil, r.refuse("bad_value")
+	}
+	for _, c := range v.Kind {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	if n := len(v.Copy); n > 256 {
+		return nil, r.refuse("bad_value")
+	}
+	for _, c := range v.Copy {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	if n := len(v.Reason); n > 256 {
+		return nil, r.refuse("bad_value")
+	}
+	for _, c := range v.Reason {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	if !(v.State).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeEndpointServiceState() (*EndpointServiceState, error) {
+	previousCeiling := r.ceiling
+	defer func() { r.ceiling = previousCeiling }()
+	r.ceiling = 1000
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &EndpointServiceState{}
+	var unknownKeys map[string]bool
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "service":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Service = x
+			case "readiness":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseEndpointServiceReadiness(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Readiness = word
+			case "reason":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reason = x
+			case "guarantees":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := r.strList()
+				if err != nil {
+					return nil, err
+				}
+				v.Guarantees = x
+			case "capabilities":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.strMap()
+				if err != nil {
+					return nil, err
+				}
+				v.Capabilities = x
+			case "definition_hash":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.DefinitionHash = x
+			default:
+				if unknownKeys[key] {
+					return nil, r.refuse("duplicate_key")
+				}
+				if unknownKeys == nil {
+					unknownKeys = map[string]bool{}
+				}
+				unknownKeys[key] = true
+				if err := r.skipValue(); err != nil {
+					return nil, err
+				}
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&63 != 63 {
+		return nil, r.refuse("missing_field")
+	}
+	if n := len(v.Service); n < 1 || n > 128 {
+		return nil, r.refuse("bad_value")
+	}
+	for _, c := range v.Service {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	if n := len(v.Reason); n > 256 {
+		return nil, r.refuse("bad_value")
+	}
+	for _, c := range v.Reason {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	if n := len(v.Guarantees); n > 64 {
+		return nil, r.refuse("bad_value")
+	}
+	for _, oaElement := range v.Guarantees {
+		if n := len(oaElement); n < 1 || n > 128 {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	for _, oaElement := range v.Guarantees {
+		for _, c := range oaElement {
+			if c < 0x20 || c >= 0x7f && c <= 0x9f {
+				return nil, r.refuse("bad_value")
+			}
+		}
+	}
+	if n := len(v.Capabilities); n > 32 {
+		return nil, r.refuse("bad_value")
+	}
+	for oaElement := range v.Capabilities {
+		if n := len(oaElement); n < 1 || n > 64 {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	for oaElement := range v.Capabilities {
+		for _, c := range oaElement {
+			if c < 0x20 || c >= 0x7f && c <= 0x9f {
+				return nil, r.refuse("bad_value")
+			}
+		}
+	}
+	for _, oaElement := range v.Capabilities {
+		if n := len(oaElement); n > 256 {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	if n := len(v.DefinitionHash); n < 71 || n > 71 {
+		return nil, r.refuse("bad_value")
+	}
+	for _, c := range v.DefinitionHash {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	if !(v.Readiness).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeEndpointDescription() (*EndpointDescription, error) {
+	previousCeiling := r.ceiling
+	defer func() { r.ceiling = previousCeiling }()
+	r.ceiling = 1000
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.checkEncodedSize(1048576); err != nil {
+		return nil, err
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &EndpointDescription{}
+	var unknownKeys map[string]bool
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "outcome":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				word, ok := ParseEndpointDescriptionOutcome(x)
+				if !ok {
+					return nil, r.refuse("bad_enum")
+				}
+				v.Outcome = word
+			case "program":
+				if seen&2 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 2
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Program = x
+			case "version":
+				if seen&4 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 4
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Version = x
+			case "services":
+				if seen&8 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 8
+				x, err := decodeList(r, (*reader).decodeEndpointServiceState)
+				if err != nil {
+					return nil, err
+				}
+				v.Services = x
+			case "refusal":
+				if seen&16 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 16
+				x, err := r.decodeEndpointRefusalDetail()
+				if err != nil {
+					return nil, err
+				}
+				v.Refusal = x
+			case "reason":
+				if seen&32 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 32
+				x, err := r.str()
+				if err != nil {
+					return nil, err
+				}
+				v.Reason = x
+			case "checks":
+				if seen&64 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 64
+				x, err := decodeList(r, (*reader).decodeEndpointProducerCheck)
+				if err != nil {
+					return nil, err
+				}
+				v.Checks = x
+			default:
+				if unknownKeys[key] {
+					return nil, r.refuse("duplicate_key")
+				}
+				if unknownKeys == nil {
+					unknownKeys = map[string]bool{}
+				}
+				unknownKeys[key] = true
+				if err := r.skipValue(); err != nil {
+					return nil, err
+				}
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&47 != 47 {
+		return nil, r.refuse("missing_field")
+	}
+	if n := len(v.Program); n > 256 {
+		return nil, r.refuse("bad_value")
+	}
+	if n := len(v.Version); n > 256 {
+		return nil, r.refuse("bad_value")
+	}
+	if n := len(v.Services); n > 64 {
+		return nil, r.refuse("bad_value")
+	}
+	if n := len(v.Reason); n > 256 {
+		return nil, r.refuse("bad_value")
+	}
+	for _, c := range v.Reason {
+		if c < 0x20 || c >= 0x7f && c <= 0x9f {
+			return nil, r.refuse("bad_value")
+		}
+	}
+	if n := len(v.Checks); n > 64 {
+		return nil, r.refuse("bad_value")
+	}
+	if !(v.Outcome).Known() {
+		return nil, r.refuse("bad_enum")
+	}
+	return v, nil
+}
+
+func (r *reader) decodeEndpointDescriptionResult() (*EndpointDescriptionResult, error) {
+	if r.at() != '{' {
+		return nil, r.refuse("wrong_type")
+	}
+	if err := r.enter(); err != nil {
+		return nil, err
+	}
+	r.pos++
+	v := &EndpointDescriptionResult{}
+	var seen uint32
+	r.ws()
+	if r.at() != '}' {
+		for {
+			r.ws()
+			if r.at() != '"' {
+				return nil, r.refuse("malformed")
+			}
+			key, err := r.str()
+			if err != nil {
+				return nil, err
+			}
+			r.ws()
+			if r.at() != ':' {
+				return nil, r.refuse("malformed")
+			}
+			r.pos++
+			r.ws()
+			switch key {
+			case "value":
+				if seen&1 != 0 {
+					return nil, r.refuse("duplicate_field")
+				}
+				seen |= 1
+				x, err := r.decodeEndpointDescription()
+				if err != nil {
+					return nil, err
+				}
+				v.Value = *x
+			default:
+				return nil, r.refuse("unknown_field")
+			}
+			r.ws()
+			if r.at() != ',' {
+				break
+			}
+			r.pos++
+		}
+	}
+	if r.at() != '}' {
+		return nil, r.refuse("malformed")
+	}
+	r.pos++
+	r.depth--
+	if seen&1 != 1 {
+		return nil, r.refuse("missing_field")
+	}
+	return v, nil
+}
+
 func (r *reader) decodeOAContentReaderOpenArguments() (*oaContentReaderOpenArguments, error) {
 	if r.at() != '{' {
 		return nil, r.refuse("wrong_type")
@@ -13534,6 +15377,916 @@ func Decode(in []byte) (*OpenResult, error) {
 	return v, nil
 }
 
+// ToJSON writes one record of this package, given as a value or a pointer,
+// as JSON laid out as its documents are and without the document terminator.
+// Anything else, a nil pointer included, is refused with wrong_type.
+func ToJSON(v any) (out []byte, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			if e, ok := p.(*Refusal); ok {
+				out, err = nil, e
+				return
+			}
+			panic(p)
+		}
+	}()
+	switch v := v.(type) {
+	case Resource:
+		return encResource(nil, &v, 0), nil
+	case *Resource:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encResource(nil, v, 0), nil
+	case OpenResult:
+		return encOpenResult(nil, &v, 0), nil
+	case *OpenResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encOpenResult(nil, v, 0), nil
+	case Chunk:
+		return encChunk(nil, &v, 0), nil
+	case *Chunk:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encChunk(nil, v, 0), nil
+	case ReadResult:
+		return encReadResult(nil, &v, 0), nil
+	case *ReadResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encReadResult(nil, v, 0), nil
+	case CloseResult:
+		return encCloseResult(nil, &v, 0), nil
+	case *CloseResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encCloseResult(nil, v, 0), nil
+	case Upload:
+		return encUpload(nil, &v, 0), nil
+	case *Upload:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encUpload(nil, v, 0), nil
+	case Stored:
+		return encStored(nil, &v, 0), nil
+	case *Stored:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encStored(nil, v, 0), nil
+	case BeginResult:
+		return encBeginResult(nil, &v, 0), nil
+	case *BeginResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encBeginResult(nil, v, 0), nil
+	case AppendResult:
+		return encAppendResult(nil, &v, 0), nil
+	case *AppendResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encAppendResult(nil, v, 0), nil
+	case CommitResult:
+		return encCommitResult(nil, &v, 0), nil
+	case *CommitResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encCommitResult(nil, v, 0), nil
+	case AbortResult:
+		return encAbortResult(nil, &v, 0), nil
+	case *AbortResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encAbortResult(nil, v, 0), nil
+	case Change:
+		return encChange(nil, &v, 0), nil
+	case *Change:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encChange(nil, v, 0), nil
+	case ChangePage:
+		return encChangePage(nil, &v, 0), nil
+	case *ChangePage:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encChangePage(nil, v, 0), nil
+	case ListedObject:
+		return encListedObject(nil, &v, 0), nil
+	case *ListedObject:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encListedObject(nil, v, 0), nil
+	case ListingPage:
+		return encListingPage(nil, &v, 0), nil
+	case *ListingPage:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encListingPage(nil, v, 0), nil
+	case Object:
+		return encObject(nil, &v, 0), nil
+	case *Object:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encObject(nil, v, 0), nil
+	case Entry:
+		return encEntry(nil, &v, 0), nil
+	case *Entry:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encEntry(nil, v, 0), nil
+	case Name:
+		return encName(nil, &v, 0), nil
+	case *Name:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encName(nil, v, 0), nil
+	case Manifest:
+		return encManifest(nil, &v, 0), nil
+	case *Manifest:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encManifest(nil, v, 0), nil
+	case Holder:
+		return encHolder(nil, &v, 0), nil
+	case *Holder:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encHolder(nil, v, 0), nil
+	case Basis:
+		return encBasis(nil, &v, 0), nil
+	case *Basis:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encBasis(nil, v, 0), nil
+	case Hold:
+		return encHold(nil, &v, 0), nil
+	case *Hold:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encHold(nil, v, 0), nil
+	case Dangling:
+		return encDangling(nil, &v, 0), nil
+	case *Dangling:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encDangling(nil, v, 0), nil
+	case StoreError:
+		return encStoreError(nil, &v, 0), nil
+	case *StoreError:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encStoreError(nil, v, 0), nil
+	case Store:
+		return encStore(nil, &v, 0), nil
+	case *Store:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encStore(nil, v, 0), nil
+	case HoldResult:
+		return encHoldResult(nil, &v, 0), nil
+	case *HoldResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encHoldResult(nil, v, 0), nil
+	case ReleaseResult:
+		return encReleaseResult(nil, &v, 0), nil
+	case *ReleaseResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encReleaseResult(nil, v, 0), nil
+	case RenewResult:
+		return encRenewResult(nil, &v, 0), nil
+	case *RenewResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encRenewResult(nil, v, 0), nil
+	case DescribeResult:
+		return encDescribeResult(nil, &v, 0), nil
+	case *DescribeResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encDescribeResult(nil, v, 0), nil
+	case PublishResult:
+		return encPublishResult(nil, &v, 0), nil
+	case *PublishResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encPublishResult(nil, v, 0), nil
+	case ManifestHolders:
+		return encManifestHolders(nil, &v, 0), nil
+	case *ManifestHolders:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encManifestHolders(nil, v, 0), nil
+	case ObjectHolders:
+		return encObjectHolders(nil, &v, 0), nil
+	case *ObjectHolders:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encObjectHolders(nil, v, 0), nil
+	case InventoryPage:
+		return encInventoryPage(nil, &v, 0), nil
+	case *InventoryPage:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encInventoryPage(nil, v, 0), nil
+	case RemoveResult:
+		return encRemoveResult(nil, &v, 0), nil
+	case *RemoveResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encRemoveResult(nil, v, 0), nil
+	case SourceDescription:
+		return encSourceDescription(nil, &v, 0), nil
+	case *SourceDescription:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encSourceDescription(nil, v, 0), nil
+	case SourceChange:
+		return encSourceChange(nil, &v, 0), nil
+	case *SourceChange:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encSourceChange(nil, v, 0), nil
+	case SourcePage:
+		return encSourcePage(nil, &v, 0), nil
+	case *SourcePage:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encSourcePage(nil, v, 0), nil
+	case EndpointRefusalDetail:
+		return encEndpointRefusalDetail(nil, &v, 0), nil
+	case *EndpointRefusalDetail:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encEndpointRefusalDetail(nil, v, 0), nil
+	case EndpointProducerCheck:
+		return encEndpointProducerCheck(nil, &v, 0), nil
+	case *EndpointProducerCheck:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encEndpointProducerCheck(nil, v, 0), nil
+	case EndpointServiceState:
+		return encEndpointServiceState(nil, &v, 0), nil
+	case *EndpointServiceState:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encEndpointServiceState(nil, v, 0), nil
+	case EndpointDescription:
+		return encEndpointDescription(nil, &v, 0), nil
+	case *EndpointDescription:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encEndpointDescription(nil, v, 0), nil
+	case EndpointDescriptionResult:
+		return encEndpointDescriptionResult(nil, &v, 0), nil
+	case *EndpointDescriptionResult:
+		if v == nil {
+			return nil, &Refusal{Word: "wrong_type"}
+		}
+		return encEndpointDescriptionResult(nil, v, 0), nil
+	}
+	return nil, &Refusal{Word: "wrong_type"}
+}
+
+// FromJSON reads one record from data into v, a pointer to a record of this
+// package. A refused input returns *Refusal.
+func FromJSON(data []byte, v any) error {
+	r := &reader{buf: data}
+	r.ws()
+	switch p := v.(type) {
+	case *Resource:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeResource()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *OpenResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeOpenResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Chunk:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeChunk()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *ReadResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeReadResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *CloseResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeCloseResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Upload:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeUpload()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Stored:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeStored()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *BeginResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeBeginResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *AppendResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeAppendResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *CommitResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeCommitResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *AbortResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeAbortResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Change:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeChange()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *ChangePage:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeChangePage()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *ListedObject:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeListedObject()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *ListingPage:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeListingPage()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Object:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeObject()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Entry:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeEntry()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Name:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeName()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Manifest:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeManifest()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Holder:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeHolder()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Basis:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeBasis()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Hold:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeHold()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Dangling:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeDangling()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *StoreError:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeStoreError()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *Store:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeStore()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *HoldResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeHoldResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *ReleaseResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeReleaseResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *RenewResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeRenewResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *DescribeResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeDescribeResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *PublishResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodePublishResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *ManifestHolders:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeManifestHolders()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *ObjectHolders:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeObjectHolders()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *InventoryPage:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeInventoryPage()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *RemoveResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeRemoveResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *SourceDescription:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeSourceDescription()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *SourceChange:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeSourceChange()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *SourcePage:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeSourcePage()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *EndpointRefusalDetail:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeEndpointRefusalDetail()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *EndpointProducerCheck:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeEndpointProducerCheck()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *EndpointServiceState:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeEndpointServiceState()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *EndpointDescription:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeEndpointDescription()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	case *EndpointDescriptionResult:
+		if p == nil {
+			return &Refusal{Word: "wrong_type"}
+		}
+		x, err := r.decodeEndpointDescriptionResult()
+		if err != nil {
+			return err
+		}
+		r.ws()
+		if r.pos < len(r.buf) {
+			return r.refuse("trailing_bytes")
+		}
+		*p = *x
+		return nil
+	}
+	return &Refusal{Word: "wrong_type"}
+}
+
 // refusals is in the order two of them are chosen between.
 
 var refusals = []string{"malformed", "bad_string", "number_spelling", "wrong_type", "bad_timestamp", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "bad_binary", "bad_enum", "trailing_bytes"}
@@ -13625,6 +16378,15 @@ func (r *reader) binary() ([]byte, error) {
 	return out, nil
 }
 
+// Keep the write in a separate compiler-visible call with an observable slice argument.
+//
+//go:noinline
+func serviceClearDecodedBinary(value []byte) {
+	for i := range value {
+		value[i] = 0
+	}
+}
+
 // A transport consumes or copies frames before returning. WriteFrame is one-way.
 type FrameWriter interface{ WriteFrame(frame []byte) error }
 type DispatchError string
@@ -13655,6 +16417,17 @@ func ServiceName(frame []byte) (string, error) {
 		return "", err
 	}
 	return v.Service, nil
+}
+
+// ServiceMethod validates the complete request envelope and version and returns
+// its untrusted routing pair. Dispatchers retain method and typed argument checks.
+// It exposes no arguments and supplies no caller authority or handler outcome.
+func ServiceMethod(frame []byte) (service string, method string, err error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return "", "", err
+	}
+	return v.Service, v.Method, nil
 }
 
 // ExchangeFrame returns the response associated with this call. Correlation,
@@ -13753,6 +16526,7 @@ func serviceReply(v *oaServiceFrame, payload Raw, err error) (frame []byte, outE
 // EndpointContract is abstraction.facade/endpoint@1, which every dispatcher
 // answers beside its own service.
 const EndpointContract = "abstraction.facade/endpoint@1"
+const EndpointV2Contract = "abstraction.facade/endpoint@2"
 
 // DescribedService is a dispatcher of any generated package, as
 // abstraction.facade/endpoint@1 Describe lists it.
@@ -13765,11 +16539,17 @@ type DescribedService interface {
 // provider's own display name and version, never authority. A frame for another
 // service reads unknown_service.
 func DescribeEndpoint(frame []byte, program, version string, services ...DescribedService) ([]byte, error) {
+	return DescribeEndpointWithChecks(frame, program, version, nil, services...)
+}
+
+// DescribeEndpointWithChecks projects already captured producer observations.
+// It performs no verification, reconciliation or readiness inference.
+func DescribeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...DescribedService) ([]byte, error) {
 	v, err := servicePayload(frame)
 	if err != nil {
 		return nil, err
 	}
-	if v.Service != EndpointContract {
+	if v.Service != EndpointContract && v.Service != EndpointV2Contract {
 		return serviceReply(v, "", DispatchError("unknown_service"))
 	}
 	if v.Method != "Describe" {
@@ -13789,6 +16569,9 @@ func DescribeEndpoint(frame []byte, program, version string, services ...Describ
 	}
 	if !empty {
 		return serviceReply(v, "", &Refusal{Word: "unknown_field"})
+	}
+	if v.Service == EndpointV2Contract {
+		return describeEndpointV2(v, program, version, checks, services...)
 	}
 	out := append([]byte(nil), "{\"value\":{\"outcome\":\"described\",\"program\":"...)
 	out = esc(out, program)
@@ -13850,16 +16633,21 @@ type ServedService interface {
 // frame goes to the service it names. A service that takes only one-way frames
 // reads wrong_mode, and a frame naming none of them reads unknown_service.
 func ServeEndpoint(frame []byte, program, version string, services ...ServedService) ([]byte, error) {
+	return ServeEndpointWithChecks(frame, program, version, nil, services...)
+}
+
+// ServeEndpointWithChecks supplies one program-level observation list.
+func ServeEndpointWithChecks(frame []byte, program, version string, checks []EndpointProducerCheck, services ...ServedService) ([]byte, error) {
 	v, err := servicePayload(frame)
 	if err != nil {
 		return nil, err
 	}
-	if v.Service == EndpointContract {
+	if v.Service == EndpointContract || v.Service == EndpointV2Contract {
 		described := make([]DescribedService, len(services))
 		for i, service := range services {
 			described[i] = service
 		}
-		return DescribeEndpoint(frame, program, version, described...)
+		return DescribeEndpointWithChecks(frame, program, version, checks, described...)
 	}
 	for _, service := range services {
 		if service.ServiceContract() != v.Service {
@@ -13871,6 +16659,138 @@ func ServeEndpoint(frame []byte, program, version string, services ...ServedServ
 		return serviceReply(v, "", DispatchError("wrong_mode"))
 	}
 	return serviceReply(v, "", DispatchError("unknown_service"))
+}
+
+func describeEndpointV2(v *oaServiceFrame, program, version string, checks []EndpointProducerCheck, services ...DescribedService) (out []byte, err error) {
+	bounded := func() ([]byte, error) {
+		description := EndpointDescription{Outcome: EndpointDescriptionOutcomeUnavailable, Reason: "bound:reply_bytes"}
+		payload := encEndpointDescriptionResult(nil, &EndpointDescriptionResult{Value: description}, 1)
+		return serviceReply(v, Raw(payload), nil)
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			if _, ok := p.(*Refusal); ok {
+				out, err = bounded()
+				return
+			}
+			panic(p)
+		}
+	}()
+	description := EndpointDescription{Outcome: EndpointDescriptionOutcomeDescribed, Program: program, Version: version, Checks: checks}
+	for _, service := range services {
+		contract, ready, why := service.DescribeService()
+		readiness := EndpointServiceReadinessNotReady
+		if ready {
+			readiness = EndpointServiceReadinessReady
+			why = ""
+		}
+		state := EndpointServiceState{Service: contract, Readiness: readiness, Reason: why}
+		if metadata, ok := service.(interface {
+			DescribeServiceMetadata() ([]string, map[string]string)
+		}); ok {
+			state.Guarantees, state.Capabilities = metadata.DescribeServiceMetadata()
+		}
+		if hashed, ok := service.(interface{ DescribeServiceDefinitionHash() string }); ok {
+			state.DefinitionHash = hashed.DescribeServiceDefinitionHash()
+		} else {
+			description = EndpointDescription{Outcome: EndpointDescriptionOutcomeUnsupported, Reason: "unsupported:not_implemented"}
+			break
+		}
+		description.Services = append(description.Services, state)
+	}
+	payload := encEndpointDescriptionResult(nil, &EndpointDescriptionResult{Value: description}, 1)
+	r := &reader{buf: payload, depth: 1}
+	if _, err := r.decodeEndpointDescriptionResult(); err != nil {
+		return bounded()
+	}
+	out, err = serviceReply(v, Raw(payload), nil)
+	if err == nil && len(out) > 1048576 {
+		return bounded()
+	}
+	return out, err
+}
+
+// ServeEndpointRemote admits a validated request before its selected handler.
+// The receiving runtime supplies trusted services and the live authority check.
+// Missing metadata is local. This helper grants no authority and retries nothing.
+func ServeEndpointRemote(frame []byte, program, version string, admit func(contract, method, profile string) error, services ...ServedService) ([]byte, error) {
+	v, err := servicePayload(frame)
+	if err != nil {
+		return nil, err
+	}
+	authorize := func(profile string) (err error) {
+		switch profile {
+		case "see", "call", "delegate":
+		case "person":
+			return &ServiceError{Code: "forbidden", Message: "remote:person_only"}
+		default:
+			return &ServiceError{Code: "unsupported", Message: "remote:local_only"}
+		}
+		if admit == nil {
+			return &ServiceError{Code: "forbidden", Message: "remote admission required"}
+		}
+		defer func() {
+			if recover() != nil {
+				err = &ServiceError{Code: ServiceErrorCodeHandlerError, Message: "handler failed"}
+			}
+		}()
+		return admit(v.Service, v.Method, profile)
+	}
+	if v.Service == EndpointContract || v.Service == EndpointV2Contract {
+		if v.Method != "Describe" {
+			return serviceReply(v, "", DispatchError("unknown_method"))
+		}
+		profile := "local"
+		selected := false
+		for _, service := range services {
+			if service.ServiceContract() == v.Service {
+				profile = RemoteMethodProfile(service, v.Service, v.Method)
+				selected = true
+				break
+			}
+		}
+
+		_ = selected
+		if err := authorize(profile); err != nil {
+			return serviceReply(v, "", err)
+		}
+		described := make([]DescribedService, len(services))
+		for i, service := range services {
+			described[i] = service
+		}
+		return DescribeEndpoint(frame, program, version, described...)
+	}
+	for _, service := range services {
+		if service.ServiceContract() != v.Service {
+			continue
+		}
+		exchanger, ok := service.(interface{ ExchangeFrame([]byte) ([]byte, error) })
+		if !ok {
+			return serviceReply(v, "", DispatchError("wrong_mode"))
+		}
+		if err := authorize(RemoteMethodProfile(service, v.Service, v.Method)); err != nil {
+			return serviceReply(v, "", err)
+		}
+		return exchanger.ExchangeFrame(frame)
+	}
+	return serviceReply(v, "", DispatchError("unknown_service"))
+}
+
+// RemoteMethodProfile reads generated dispatch metadata. Missing or unknown metadata is local.
+// The profile grants no authority and promises no retry safety.
+func RemoteMethodProfile(service interface{}, contract, method string) string {
+	if provider, ok := service.(interface {
+		RemoteMethodProfile(string, string) (string, bool)
+	}); ok {
+		profile, known := provider.RemoteMethodProfile(contract, method)
+		if known {
+			switch profile {
+			case "local", "see", "call", "delegate", "person":
+				return profile
+			}
+		}
+	}
+	return "local"
 }
 
 type ContentReader interface {
@@ -13889,6 +16809,26 @@ func NewContentReaderClient(t ContentReaderTransport) *ContentReaderClient {
 
 type ContentReaderDispatcher struct{ Handler ContentReader }
 
+func (d *ContentReaderDispatcher) RemoteMethodProfile(contract, method string) (string, bool) {
+	if contract == "abstraction.facade/endpoint@1" && method == "Describe" {
+		return "see", true
+	}
+	if contract == "abstraction.facade/endpoint@2" && method == "Describe" {
+		return "see", true
+	}
+	if contract != d.ServiceContract() {
+		return "local", false
+	}
+	switch method {
+	case "Open":
+		return "local", true
+	case "Read":
+		return "local", true
+	case "Close":
+		return "local", true
+	}
+	return "local", false
+}
 func (c *ContentReaderClient) Open(digest string) (result OpenResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -13926,6 +16866,10 @@ func (c *ContentReaderClient) Open(digest string) (result OpenResult, err error)
 	r.ws()
 	if r.pos != len(r.buf) {
 		err = r.refuse("trailing_bytes")
+		return
+	}
+	if (decoded.Value.Outcome.String() == "opened") != (decoded.Value.Resource != nil) {
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	result = decoded.Value
@@ -13968,6 +16912,13 @@ func (c *ContentReaderClient) Read(handle string, offset, maxBytes int64) (resul
 	r.ws()
 	if r.pos != len(r.buf) {
 		err = r.refuse("trailing_bytes")
+		return
+	}
+	if (decoded.Value.Outcome.String() == "data") != (decoded.Value.Chunk != nil) {
+		if decoded.Value.Chunk != nil {
+			serviceClearDecodedBinary(decoded.Value.Chunk.Data)
+		}
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	result = decoded.Value
@@ -14043,6 +16994,11 @@ func (d *ContentReaderDispatcher) DescribeServiceMetadata() (guarantees []string
 func (d *ContentReaderDispatcher) ServiceContract() string {
 	return "abstraction.storage/content-reader@1"
 }
+
+// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.
+func (d *ContentReaderDispatcher) DescribeServiceDefinitionHash() string {
+	return "sha256:db0ad220506c84a6271d2d0cbd8e63a307716f1ceb33cba91d95699a0b0b6e23"
+}
 func (d *ContentReaderDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
 	if err != nil {
@@ -14068,6 +17024,9 @@ func (d *ContentReaderDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return nil, err
 	}
 	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service == EndpointV2Contract {
 		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/content-reader@1" {
@@ -14133,6 +17092,10 @@ func (d *ContentReaderDispatcher) invokeOpen(args *oaContentReaderOpenArguments)
 	if err != nil {
 		return
 	}
+	if (result.Outcome.String() == "opened") != (result.Resource != nil) {
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
 	value := oaContentReaderOpenResult{Value: result}
 	payload = Raw(encOAContentReaderOpenResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
@@ -14163,6 +17126,10 @@ func (d *ContentReaderDispatcher) invokeRead(args *oaContentReaderReadArguments)
 	var result ReadResult
 	result, err = d.Handler.Read(args.Handle, args.Offset, args.MaxBytes)
 	if err != nil {
+		return
+	}
+	if (result.Outcome.String() == "data") != (result.Chunk != nil) {
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	value := oaContentReaderReadResult{Value: result}
@@ -14231,6 +17198,28 @@ func NewContentWriterClient(t ContentWriterTransport) *ContentWriterClient {
 
 type ContentWriterDispatcher struct{ Handler ContentWriter }
 
+func (d *ContentWriterDispatcher) RemoteMethodProfile(contract, method string) (string, bool) {
+	if contract == "abstraction.facade/endpoint@1" && method == "Describe" {
+		return "see", true
+	}
+	if contract == "abstraction.facade/endpoint@2" && method == "Describe" {
+		return "see", true
+	}
+	if contract != d.ServiceContract() {
+		return "local", false
+	}
+	switch method {
+	case "Begin":
+		return "local", true
+	case "Append":
+		return "local", true
+	case "Commit":
+		return "local", true
+	case "Abort":
+		return "local", true
+	}
+	return "local", false
+}
 func (c *ContentWriterClient) Begin(request, digest string, size int64) (result BeginResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -14268,6 +17257,10 @@ func (c *ContentWriterClient) Begin(request, digest string, size int64) (result 
 	r.ws()
 	if r.pos != len(r.buf) {
 		err = r.refuse("trailing_bytes")
+		return
+	}
+	if (decoded.Value.Outcome.String() == "started") != (decoded.Value.Upload != nil) {
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	result = decoded.Value
@@ -14354,6 +17347,10 @@ func (c *ContentWriterClient) Commit(handle string) (result CommitResult, err er
 		err = r.refuse("trailing_bytes")
 		return
 	}
+	if (decoded.Value.Outcome.String() == "committed") != (decoded.Value.Stored != nil) {
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
 	result = decoded.Value
 	return
 }
@@ -14427,6 +17424,11 @@ func (d *ContentWriterDispatcher) DescribeServiceMetadata() (guarantees []string
 func (d *ContentWriterDispatcher) ServiceContract() string {
 	return "abstraction.storage/content-writer@1"
 }
+
+// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.
+func (d *ContentWriterDispatcher) DescribeServiceDefinitionHash() string {
+	return "sha256:26a8b66e6a31923d69306a7c11bb56181e175efb7f93e0dd40c4c21532fac830"
+}
 func (d *ContentWriterDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
 	if err != nil {
@@ -14454,6 +17456,9 @@ func (d *ContentWriterDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return nil, err
 	}
 	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service == EndpointV2Contract {
 		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/content-writer@1" {
@@ -14532,6 +17537,10 @@ func (d *ContentWriterDispatcher) invokeBegin(args *oaContentWriterBeginArgument
 	if err != nil {
 		return
 	}
+	if (result.Outcome.String() == "started") != (result.Upload != nil) {
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
+		return
+	}
 	value := oaContentWriterBeginResult{Value: result}
 	payload = Raw(encOAContentWriterBeginResult(nil, &value, 1))
 	r := &reader{buf: []byte(payload), depth: 1}
@@ -14594,6 +17603,10 @@ func (d *ContentWriterDispatcher) invokeCommit(args *oaContentWriterCommitArgume
 	var result CommitResult
 	result, err = d.Handler.Commit(args.Handle)
 	if err != nil {
+		return
+	}
+	if (result.Outcome.String() == "committed") != (result.Stored != nil) {
+		err = &ServiceError{Code: ServiceErrorCodeInvalidResult}
 		return
 	}
 	value := oaContentWriterCommitResult{Value: result}
@@ -14660,6 +17673,24 @@ func NewContentChangesClient(t ContentChangesTransport) *ContentChangesClient {
 
 type ContentChangesDispatcher struct{ Handler ContentChanges }
 
+func (d *ContentChangesDispatcher) RemoteMethodProfile(contract, method string) (string, bool) {
+	if contract == "abstraction.facade/endpoint@1" && method == "Describe" {
+		return "see", true
+	}
+	if contract == "abstraction.facade/endpoint@2" && method == "Describe" {
+		return "see", true
+	}
+	if contract != d.ServiceContract() {
+		return "local", false
+	}
+	switch method {
+	case "Observe":
+		return "local", true
+	case "List":
+		return "local", true
+	}
+	return "local", false
+}
 func (c *ContentChangesClient) Observe(cursor string, maxChanges, waitMs int64) (result ChangePage, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -14772,6 +17803,11 @@ func (d *ContentChangesDispatcher) DescribeServiceMetadata() (guarantees []strin
 func (d *ContentChangesDispatcher) ServiceContract() string {
 	return "abstraction.storage/content-changes@1"
 }
+
+// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.
+func (d *ContentChangesDispatcher) DescribeServiceDefinitionHash() string {
+	return "sha256:3e2325dcaedc90a26c551b669579ca0e9cd7144b45f89efe20bb40906c6d5e3a"
+}
 func (d *ContentChangesDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
 	if err != nil {
@@ -14795,6 +17831,9 @@ func (d *ContentChangesDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return nil, err
 	}
 	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service == EndpointV2Contract {
 		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/content-changes@1" {
@@ -14910,6 +17949,26 @@ func NewHoldsClient(t HoldsTransport) *HoldsClient { return &HoldsClient{transpo
 
 type HoldsDispatcher struct{ Handler Holds }
 
+func (d *HoldsDispatcher) RemoteMethodProfile(contract, method string) (string, bool) {
+	if contract == "abstraction.facade/endpoint@1" && method == "Describe" {
+		return "see", true
+	}
+	if contract == "abstraction.facade/endpoint@2" && method == "Describe" {
+		return "see", true
+	}
+	if contract != d.ServiceContract() {
+		return "local", false
+	}
+	switch method {
+	case "Hold":
+		return "local", true
+	case "Release":
+		return "local", true
+	case "Renew":
+		return "local", true
+	}
+	return "local", false
+}
 func (c *HoldsClient) Hold(request, target, purpose string, lifetime Lifetime, leaseMs int64) (result HoldResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -15062,6 +18121,11 @@ func (d *HoldsDispatcher) DescribeServiceMetadata() (guarantees []string, capabi
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
 func (d *HoldsDispatcher) ServiceContract() string { return "abstraction.storage/holds@1" }
+
+// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.
+func (d *HoldsDispatcher) DescribeServiceDefinitionHash() string {
+	return "sha256:1450065bc3abc60c2e3af1e83970076ac8dadb7e6c243dddf0a4f106bb6e6d6e"
+}
 func (d *HoldsDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
 	if err != nil {
@@ -15087,6 +18151,9 @@ func (d *HoldsDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return nil, err
 	}
 	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service == EndpointV2Contract {
 		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/holds@1" {
@@ -15246,6 +18313,24 @@ func NewManifestsClient(t ManifestsTransport) *ManifestsClient { return &Manifes
 
 type ManifestsDispatcher struct{ Handler Manifests }
 
+func (d *ManifestsDispatcher) RemoteMethodProfile(contract, method string) (string, bool) {
+	if contract == "abstraction.facade/endpoint@1" && method == "Describe" {
+		return "see", true
+	}
+	if contract == "abstraction.facade/endpoint@2" && method == "Describe" {
+		return "see", true
+	}
+	if contract != d.ServiceContract() {
+		return "local", false
+	}
+	switch method {
+	case "Describe":
+		return "local", true
+	case "Publish":
+		return "local", true
+	}
+	return "local", false
+}
 func (c *ManifestsClient) Describe(id string) (result DescribeResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -15356,6 +18441,11 @@ func (d *ManifestsDispatcher) DescribeServiceMetadata() (guarantees []string, ca
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
 func (d *ManifestsDispatcher) ServiceContract() string { return "abstraction.storage/manifests@1" }
+
+// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.
+func (d *ManifestsDispatcher) DescribeServiceDefinitionHash() string {
+	return "sha256:975ea68d9c40ec3084268613f74f346e8db346ce878bccee09bdf1d8b3a969c9"
+}
 func (d *ManifestsDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
 	if err != nil {
@@ -15379,6 +18469,9 @@ func (d *ManifestsDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return nil, err
 	}
 	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service == EndpointV2Contract {
 		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/manifests@1" {
@@ -15496,6 +18589,30 @@ func NewInventoryClient(t InventoryTransport) *InventoryClient { return &Invento
 
 type InventoryDispatcher struct{ Handler Inventory }
 
+func (d *InventoryDispatcher) RemoteMethodProfile(contract, method string) (string, bool) {
+	if contract == "abstraction.facade/endpoint@1" && method == "Describe" {
+		return "see", true
+	}
+	if contract == "abstraction.facade/endpoint@2" && method == "Describe" {
+		return "see", true
+	}
+	if contract != d.ServiceContract() {
+		return "local", false
+	}
+	switch method {
+	case "List":
+		return "local", true
+	case "ListStore":
+		return "local", true
+	case "Holders":
+		return "local", true
+	case "Unheld":
+		return "local", true
+	case "Find":
+		return "local", true
+	}
+	return "local", false
+}
 func (c *InventoryClient) List(continuation string, limit int64) (result InventoryPage, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -15732,6 +18849,11 @@ func (d *InventoryDispatcher) DescribeServiceMetadata() (guarantees []string, ca
 
 // ServiceContract is the wire name ServeEndpoint routes this dispatcher's frames by.
 func (d *InventoryDispatcher) ServiceContract() string { return "abstraction.storage/inventory@1" }
+
+// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.
+func (d *InventoryDispatcher) DescribeServiceDefinitionHash() string {
+	return "sha256:0d1840b6fbe9590c506b9d34cc9da25c6833e17d5b63bc8de3005ceb4f2d1f8c"
+}
 func (d *InventoryDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
 	if err != nil {
@@ -15761,6 +18883,9 @@ func (d *InventoryDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return nil, err
 	}
 	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service == EndpointV2Contract {
 		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/inventory@1" {
@@ -16011,6 +19136,22 @@ func NewContentRemoverClient(t ContentRemoverTransport) *ContentRemoverClient {
 
 type ContentRemoverDispatcher struct{ Handler ContentRemover }
 
+func (d *ContentRemoverDispatcher) RemoteMethodProfile(contract, method string) (string, bool) {
+	if contract == "abstraction.facade/endpoint@1" && method == "Describe" {
+		return "see", true
+	}
+	if contract == "abstraction.facade/endpoint@2" && method == "Describe" {
+		return "see", true
+	}
+	if contract != d.ServiceContract() {
+		return "local", false
+	}
+	switch method {
+	case "Remove":
+		return "local", true
+	}
+	return "local", false
+}
 func (c *ContentRemoverClient) Remove(target string) (result RemoveResult, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -16081,6 +19222,11 @@ func (d *ContentRemoverDispatcher) DescribeServiceMetadata() (guarantees []strin
 func (d *ContentRemoverDispatcher) ServiceContract() string {
 	return "abstraction.storage/content-remover@1"
 }
+
+// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.
+func (d *ContentRemoverDispatcher) DescribeServiceDefinitionHash() string {
+	return "sha256:6d1c18ceb050666c71b4687d4f071d6cc5d174748ca8c4712a8fb8313cac3179"
+}
 func (d *ContentRemoverDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
 	if err != nil {
@@ -16102,6 +19248,9 @@ func (d *ContentRemoverDispatcher) ExchangeFrame(frame []byte) ([]byte, error) {
 		return nil, err
 	}
 	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service == EndpointV2Contract {
 		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/content-remover@1" {
@@ -16176,6 +19325,30 @@ func NewInventorySourceClient(t InventorySourceTransport) *InventorySourceClient
 
 type InventorySourceDispatcher struct{ Handler InventorySource }
 
+func (d *InventorySourceDispatcher) RemoteMethodProfile(contract, method string) (string, bool) {
+	if contract == "abstraction.facade/endpoint@1" && method == "Describe" {
+		return "see", true
+	}
+	if contract == "abstraction.facade/endpoint@2" && method == "Describe" {
+		return "see", true
+	}
+	if contract != d.ServiceContract() {
+		return "local", false
+	}
+	switch method {
+	case "Describe":
+		return "local", true
+	case "Snapshot":
+		return "local", true
+	case "Observe":
+		return "local", true
+	case "Verify":
+		return "local", true
+	case "Remove":
+		return "local", true
+	}
+	return "local", false
+}
 func (c *InventorySourceClient) Describe() (result SourceDescription, err error) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -16414,6 +19587,11 @@ func (d *InventorySourceDispatcher) DescribeServiceMetadata() (guarantees []stri
 func (d *InventorySourceDispatcher) ServiceContract() string {
 	return "abstraction.storage/inventory-source@1"
 }
+
+// DescribeServiceDefinitionHash is gen --hash over the canonical service definition.
+func (d *InventorySourceDispatcher) DescribeServiceDefinitionHash() string {
+	return "sha256:a915b6a71a540f4a0b7704c99534fb9d7e9494e04f508beda8f77230735aa218"
+}
 func (d *InventorySourceDispatcher) WriteFrame(frame []byte) error {
 	v, err := servicePayload(frame)
 	if err != nil {
@@ -16443,6 +19621,9 @@ func (d *InventorySourceDispatcher) ExchangeFrame(frame []byte) ([]byte, error) 
 		return nil, err
 	}
 	if v.Service == EndpointContract {
+		return DescribeEndpoint(frame, "", "", d)
+	}
+	if v.Service == EndpointV2Contract {
 		return DescribeEndpoint(frame, "", "", d)
 	}
 	if v.Service != "abstraction.storage/inventory-source@1" {
@@ -16679,189 +19860,187 @@ func (d *InventorySourceDispatcher) invokeRemove(args *oaInventorySourceRemoveAr
 	return
 }
 
-func(r *reader)depthLimit()int{if r.limit>0 && r.limit<depthLimit{return r.limit};return depthLimit}
-
 func DecodeResourceAt(in []byte,depth,limit int)(*Resource,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeResource();return v,r.pos,e}
-func EncodeResourceAt(v *Resource,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encResource(nil,v,depth);if _,_,e:=DecodeResourceAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeResourceAt(v *Resource,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encResource(nil,v,depth);if _,_,e:=DecodeResourceAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeResource(v *Resource)[]byte{return append(EncodeResourceAt(v,0),"\n"...)}
-func DecodeResource(in []byte)(*Resource,error){v,n,e:=DecodeResourceAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeResource(in []byte)(*Resource,error){v,n,e:=DecodeResourceAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeOpenResultAt(in []byte,depth,limit int)(*OpenResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeOpenResult();return v,r.pos,e}
-func EncodeOpenResultAt(v *OpenResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encOpenResult(nil,v,depth);if _,_,e:=DecodeOpenResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeOpenResultAt(v *OpenResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encOpenResult(nil,v,depth);if _,_,e:=DecodeOpenResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeOpenResult(v *OpenResult)[]byte{return append(EncodeOpenResultAt(v,0),"\n"...)}
-func DecodeOpenResult(in []byte)(*OpenResult,error){v,n,e:=DecodeOpenResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeOpenResult(in []byte)(*OpenResult,error){v,n,e:=DecodeOpenResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeChunkAt(in []byte,depth,limit int)(*Chunk,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeChunk();return v,r.pos,e}
-func EncodeChunkAt(v *Chunk,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encChunk(nil,v,depth);if _,_,e:=DecodeChunkAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeChunkAt(v *Chunk,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encChunk(nil,v,depth);if _,_,e:=DecodeChunkAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeChunk(v *Chunk)[]byte{return append(EncodeChunkAt(v,0),"\n"...)}
-func DecodeChunk(in []byte)(*Chunk,error){v,n,e:=DecodeChunkAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeChunk(in []byte)(*Chunk,error){v,n,e:=DecodeChunkAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeReadResultAt(in []byte,depth,limit int)(*ReadResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeReadResult();return v,r.pos,e}
-func EncodeReadResultAt(v *ReadResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encReadResult(nil,v,depth);if _,_,e:=DecodeReadResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeReadResultAt(v *ReadResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encReadResult(nil,v,depth);if _,_,e:=DecodeReadResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeReadResult(v *ReadResult)[]byte{return append(EncodeReadResultAt(v,0),"\n"...)}
-func DecodeReadResult(in []byte)(*ReadResult,error){v,n,e:=DecodeReadResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeReadResult(in []byte)(*ReadResult,error){v,n,e:=DecodeReadResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeCloseResultAt(in []byte,depth,limit int)(*CloseResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeCloseResult();return v,r.pos,e}
-func EncodeCloseResultAt(v *CloseResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encCloseResult(nil,v,depth);if _,_,e:=DecodeCloseResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeCloseResultAt(v *CloseResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encCloseResult(nil,v,depth);if _,_,e:=DecodeCloseResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeCloseResult(v *CloseResult)[]byte{return append(EncodeCloseResultAt(v,0),"\n"...)}
-func DecodeCloseResult(in []byte)(*CloseResult,error){v,n,e:=DecodeCloseResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeCloseResult(in []byte)(*CloseResult,error){v,n,e:=DecodeCloseResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeUploadAt(in []byte,depth,limit int)(*Upload,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeUpload();return v,r.pos,e}
-func EncodeUploadAt(v *Upload,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encUpload(nil,v,depth);if _,_,e:=DecodeUploadAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeUploadAt(v *Upload,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encUpload(nil,v,depth);if _,_,e:=DecodeUploadAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeUpload(v *Upload)[]byte{return append(EncodeUploadAt(v,0),"\n"...)}
-func DecodeUpload(in []byte)(*Upload,error){v,n,e:=DecodeUploadAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeUpload(in []byte)(*Upload,error){v,n,e:=DecodeUploadAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeStoredAt(in []byte,depth,limit int)(*Stored,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeStored();return v,r.pos,e}
-func EncodeStoredAt(v *Stored,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encStored(nil,v,depth);if _,_,e:=DecodeStoredAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeStoredAt(v *Stored,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encStored(nil,v,depth);if _,_,e:=DecodeStoredAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeStored(v *Stored)[]byte{return append(EncodeStoredAt(v,0),"\n"...)}
-func DecodeStored(in []byte)(*Stored,error){v,n,e:=DecodeStoredAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeStored(in []byte)(*Stored,error){v,n,e:=DecodeStoredAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeBeginResultAt(in []byte,depth,limit int)(*BeginResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeBeginResult();return v,r.pos,e}
-func EncodeBeginResultAt(v *BeginResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encBeginResult(nil,v,depth);if _,_,e:=DecodeBeginResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeBeginResultAt(v *BeginResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encBeginResult(nil,v,depth);if _,_,e:=DecodeBeginResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeBeginResult(v *BeginResult)[]byte{return append(EncodeBeginResultAt(v,0),"\n"...)}
-func DecodeBeginResult(in []byte)(*BeginResult,error){v,n,e:=DecodeBeginResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeBeginResult(in []byte)(*BeginResult,error){v,n,e:=DecodeBeginResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeAppendResultAt(in []byte,depth,limit int)(*AppendResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeAppendResult();return v,r.pos,e}
-func EncodeAppendResultAt(v *AppendResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encAppendResult(nil,v,depth);if _,_,e:=DecodeAppendResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeAppendResultAt(v *AppendResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encAppendResult(nil,v,depth);if _,_,e:=DecodeAppendResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeAppendResult(v *AppendResult)[]byte{return append(EncodeAppendResultAt(v,0),"\n"...)}
-func DecodeAppendResult(in []byte)(*AppendResult,error){v,n,e:=DecodeAppendResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeAppendResult(in []byte)(*AppendResult,error){v,n,e:=DecodeAppendResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeCommitResultAt(in []byte,depth,limit int)(*CommitResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeCommitResult();return v,r.pos,e}
-func EncodeCommitResultAt(v *CommitResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encCommitResult(nil,v,depth);if _,_,e:=DecodeCommitResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeCommitResultAt(v *CommitResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encCommitResult(nil,v,depth);if _,_,e:=DecodeCommitResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeCommitResult(v *CommitResult)[]byte{return append(EncodeCommitResultAt(v,0),"\n"...)}
-func DecodeCommitResult(in []byte)(*CommitResult,error){v,n,e:=DecodeCommitResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeCommitResult(in []byte)(*CommitResult,error){v,n,e:=DecodeCommitResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeAbortResultAt(in []byte,depth,limit int)(*AbortResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeAbortResult();return v,r.pos,e}
-func EncodeAbortResultAt(v *AbortResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encAbortResult(nil,v,depth);if _,_,e:=DecodeAbortResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeAbortResultAt(v *AbortResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encAbortResult(nil,v,depth);if _,_,e:=DecodeAbortResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeAbortResult(v *AbortResult)[]byte{return append(EncodeAbortResultAt(v,0),"\n"...)}
-func DecodeAbortResult(in []byte)(*AbortResult,error){v,n,e:=DecodeAbortResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeAbortResult(in []byte)(*AbortResult,error){v,n,e:=DecodeAbortResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeChangeAt(in []byte,depth,limit int)(*Change,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeChange();return v,r.pos,e}
-func EncodeChangeAt(v *Change,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encChange(nil,v,depth);if _,_,e:=DecodeChangeAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeChangeAt(v *Change,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encChange(nil,v,depth);if _,_,e:=DecodeChangeAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeChange(v *Change)[]byte{return append(EncodeChangeAt(v,0),"\n"...)}
-func DecodeChange(in []byte)(*Change,error){v,n,e:=DecodeChangeAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeChange(in []byte)(*Change,error){v,n,e:=DecodeChangeAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeChangePageAt(in []byte,depth,limit int)(*ChangePage,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeChangePage();return v,r.pos,e}
-func EncodeChangePageAt(v *ChangePage,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encChangePage(nil,v,depth);if _,_,e:=DecodeChangePageAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeChangePageAt(v *ChangePage,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encChangePage(nil,v,depth);if _,_,e:=DecodeChangePageAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeChangePage(v *ChangePage)[]byte{return append(EncodeChangePageAt(v,0),"\n"...)}
-func DecodeChangePage(in []byte)(*ChangePage,error){v,n,e:=DecodeChangePageAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeChangePage(in []byte)(*ChangePage,error){v,n,e:=DecodeChangePageAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeListedObjectAt(in []byte,depth,limit int)(*ListedObject,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeListedObject();return v,r.pos,e}
-func EncodeListedObjectAt(v *ListedObject,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encListedObject(nil,v,depth);if _,_,e:=DecodeListedObjectAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeListedObjectAt(v *ListedObject,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encListedObject(nil,v,depth);if _,_,e:=DecodeListedObjectAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeListedObject(v *ListedObject)[]byte{return append(EncodeListedObjectAt(v,0),"\n"...)}
-func DecodeListedObject(in []byte)(*ListedObject,error){v,n,e:=DecodeListedObjectAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeListedObject(in []byte)(*ListedObject,error){v,n,e:=DecodeListedObjectAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeListingPageAt(in []byte,depth,limit int)(*ListingPage,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeListingPage();return v,r.pos,e}
-func EncodeListingPageAt(v *ListingPage,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encListingPage(nil,v,depth);if _,_,e:=DecodeListingPageAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeListingPageAt(v *ListingPage,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encListingPage(nil,v,depth);if _,_,e:=DecodeListingPageAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeListingPage(v *ListingPage)[]byte{return append(EncodeListingPageAt(v,0),"\n"...)}
-func DecodeListingPage(in []byte)(*ListingPage,error){v,n,e:=DecodeListingPageAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeListingPage(in []byte)(*ListingPage,error){v,n,e:=DecodeListingPageAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeObjectAt(in []byte,depth,limit int)(*Object,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeObject();return v,r.pos,e}
-func EncodeObjectAt(v *Object,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encObject(nil,v,depth);if _,_,e:=DecodeObjectAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeObjectAt(v *Object,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encObject(nil,v,depth);if _,_,e:=DecodeObjectAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeObject(v *Object)[]byte{return append(EncodeObjectAt(v,0),"\n"...)}
-func DecodeObject(in []byte)(*Object,error){v,n,e:=DecodeObjectAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeObject(in []byte)(*Object,error){v,n,e:=DecodeObjectAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeEntryAt(in []byte,depth,limit int)(*Entry,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeEntry();return v,r.pos,e}
-func EncodeEntryAt(v *Entry,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encEntry(nil,v,depth);if _,_,e:=DecodeEntryAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeEntryAt(v *Entry,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encEntry(nil,v,depth);if _,_,e:=DecodeEntryAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeEntry(v *Entry)[]byte{return append(EncodeEntryAt(v,0),"\n"...)}
-func DecodeEntry(in []byte)(*Entry,error){v,n,e:=DecodeEntryAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeEntry(in []byte)(*Entry,error){v,n,e:=DecodeEntryAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeNameAt(in []byte,depth,limit int)(*Name,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeName();return v,r.pos,e}
-func EncodeNameAt(v *Name,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encName(nil,v,depth);if _,_,e:=DecodeNameAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeNameAt(v *Name,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encName(nil,v,depth);if _,_,e:=DecodeNameAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeName(v *Name)[]byte{return append(EncodeNameAt(v,0),"\n"...)}
-func DecodeName(in []byte)(*Name,error){v,n,e:=DecodeNameAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeName(in []byte)(*Name,error){v,n,e:=DecodeNameAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeManifestAt(in []byte,depth,limit int)(*Manifest,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeManifest();return v,r.pos,e}
-func EncodeManifestAt(v *Manifest,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encManifest(nil,v,depth);if _,_,e:=DecodeManifestAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeManifestAt(v *Manifest,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encManifest(nil,v,depth);if _,_,e:=DecodeManifestAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeManifest(v *Manifest)[]byte{return append(EncodeManifestAt(v,0),"\n"...)}
-func DecodeManifest(in []byte)(*Manifest,error){v,n,e:=DecodeManifestAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeManifest(in []byte)(*Manifest,error){v,n,e:=DecodeManifestAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeHolderAt(in []byte,depth,limit int)(*Holder,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeHolder();return v,r.pos,e}
-func EncodeHolderAt(v *Holder,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encHolder(nil,v,depth);if _,_,e:=DecodeHolderAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeHolderAt(v *Holder,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encHolder(nil,v,depth);if _,_,e:=DecodeHolderAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeHolder(v *Holder)[]byte{return append(EncodeHolderAt(v,0),"\n"...)}
-func DecodeHolder(in []byte)(*Holder,error){v,n,e:=DecodeHolderAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeHolder(in []byte)(*Holder,error){v,n,e:=DecodeHolderAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeBasisAt(in []byte,depth,limit int)(*Basis,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeBasis();return v,r.pos,e}
-func EncodeBasisAt(v *Basis,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encBasis(nil,v,depth);if _,_,e:=DecodeBasisAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeBasisAt(v *Basis,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encBasis(nil,v,depth);if _,_,e:=DecodeBasisAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeBasis(v *Basis)[]byte{return append(EncodeBasisAt(v,0),"\n"...)}
-func DecodeBasis(in []byte)(*Basis,error){v,n,e:=DecodeBasisAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeBasis(in []byte)(*Basis,error){v,n,e:=DecodeBasisAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeHoldAt(in []byte,depth,limit int)(*Hold,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeHold();return v,r.pos,e}
-func EncodeHoldAt(v *Hold,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encHold(nil,v,depth);if _,_,e:=DecodeHoldAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeHoldAt(v *Hold,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encHold(nil,v,depth);if _,_,e:=DecodeHoldAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeHold(v *Hold)[]byte{return append(EncodeHoldAt(v,0),"\n"...)}
-func DecodeHold(in []byte)(*Hold,error){v,n,e:=DecodeHoldAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeHold(in []byte)(*Hold,error){v,n,e:=DecodeHoldAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeDanglingAt(in []byte,depth,limit int)(*Dangling,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeDangling();return v,r.pos,e}
-func EncodeDanglingAt(v *Dangling,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encDangling(nil,v,depth);if _,_,e:=DecodeDanglingAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeDanglingAt(v *Dangling,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encDangling(nil,v,depth);if _,_,e:=DecodeDanglingAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeDangling(v *Dangling)[]byte{return append(EncodeDanglingAt(v,0),"\n"...)}
-func DecodeDangling(in []byte)(*Dangling,error){v,n,e:=DecodeDanglingAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeDangling(in []byte)(*Dangling,error){v,n,e:=DecodeDanglingAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeStoreErrorAt(in []byte,depth,limit int)(*StoreError,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeStoreError();return v,r.pos,e}
-func EncodeStoreErrorAt(v *StoreError,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encStoreError(nil,v,depth);if _,_,e:=DecodeStoreErrorAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeStoreErrorAt(v *StoreError,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encStoreError(nil,v,depth);if _,_,e:=DecodeStoreErrorAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeStoreError(v *StoreError)[]byte{return append(EncodeStoreErrorAt(v,0),"\n"...)}
-func DecodeStoreError(in []byte)(*StoreError,error){v,n,e:=DecodeStoreErrorAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeStoreError(in []byte)(*StoreError,error){v,n,e:=DecodeStoreErrorAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeStoreAt(in []byte,depth,limit int)(*Store,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeStore();return v,r.pos,e}
-func EncodeStoreAt(v *Store,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encStore(nil,v,depth);if _,_,e:=DecodeStoreAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeStoreAt(v *Store,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encStore(nil,v,depth);if _,_,e:=DecodeStoreAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeStore(v *Store)[]byte{return append(EncodeStoreAt(v,0),"\n"...)}
-func DecodeStore(in []byte)(*Store,error){v,n,e:=DecodeStoreAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeStore(in []byte)(*Store,error){v,n,e:=DecodeStoreAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeHoldResultAt(in []byte,depth,limit int)(*HoldResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeHoldResult();return v,r.pos,e}
-func EncodeHoldResultAt(v *HoldResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encHoldResult(nil,v,depth);if _,_,e:=DecodeHoldResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeHoldResultAt(v *HoldResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encHoldResult(nil,v,depth);if _,_,e:=DecodeHoldResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeHoldResult(v *HoldResult)[]byte{return append(EncodeHoldResultAt(v,0),"\n"...)}
-func DecodeHoldResult(in []byte)(*HoldResult,error){v,n,e:=DecodeHoldResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeHoldResult(in []byte)(*HoldResult,error){v,n,e:=DecodeHoldResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeReleaseResultAt(in []byte,depth,limit int)(*ReleaseResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeReleaseResult();return v,r.pos,e}
-func EncodeReleaseResultAt(v *ReleaseResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encReleaseResult(nil,v,depth);if _,_,e:=DecodeReleaseResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeReleaseResultAt(v *ReleaseResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encReleaseResult(nil,v,depth);if _,_,e:=DecodeReleaseResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeReleaseResult(v *ReleaseResult)[]byte{return append(EncodeReleaseResultAt(v,0),"\n"...)}
-func DecodeReleaseResult(in []byte)(*ReleaseResult,error){v,n,e:=DecodeReleaseResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeReleaseResult(in []byte)(*ReleaseResult,error){v,n,e:=DecodeReleaseResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeRenewResultAt(in []byte,depth,limit int)(*RenewResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeRenewResult();return v,r.pos,e}
-func EncodeRenewResultAt(v *RenewResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encRenewResult(nil,v,depth);if _,_,e:=DecodeRenewResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeRenewResultAt(v *RenewResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encRenewResult(nil,v,depth);if _,_,e:=DecodeRenewResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeRenewResult(v *RenewResult)[]byte{return append(EncodeRenewResultAt(v,0),"\n"...)}
-func DecodeRenewResult(in []byte)(*RenewResult,error){v,n,e:=DecodeRenewResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeRenewResult(in []byte)(*RenewResult,error){v,n,e:=DecodeRenewResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeDescribeResultAt(in []byte,depth,limit int)(*DescribeResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeDescribeResult();return v,r.pos,e}
-func EncodeDescribeResultAt(v *DescribeResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encDescribeResult(nil,v,depth);if _,_,e:=DecodeDescribeResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeDescribeResultAt(v *DescribeResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encDescribeResult(nil,v,depth);if _,_,e:=DecodeDescribeResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeDescribeResult(v *DescribeResult)[]byte{return append(EncodeDescribeResultAt(v,0),"\n"...)}
-func DecodeDescribeResult(in []byte)(*DescribeResult,error){v,n,e:=DecodeDescribeResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeDescribeResult(in []byte)(*DescribeResult,error){v,n,e:=DecodeDescribeResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodePublishResultAt(in []byte,depth,limit int)(*PublishResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodePublishResult();return v,r.pos,e}
-func EncodePublishResultAt(v *PublishResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encPublishResult(nil,v,depth);if _,_,e:=DecodePublishResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodePublishResultAt(v *PublishResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encPublishResult(nil,v,depth);if _,_,e:=DecodePublishResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodePublishResult(v *PublishResult)[]byte{return append(EncodePublishResultAt(v,0),"\n"...)}
-func DecodePublishResult(in []byte)(*PublishResult,error){v,n,e:=DecodePublishResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodePublishResult(in []byte)(*PublishResult,error){v,n,e:=DecodePublishResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeManifestHoldersAt(in []byte,depth,limit int)(*ManifestHolders,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeManifestHolders();return v,r.pos,e}
-func EncodeManifestHoldersAt(v *ManifestHolders,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encManifestHolders(nil,v,depth);if _,_,e:=DecodeManifestHoldersAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeManifestHoldersAt(v *ManifestHolders,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encManifestHolders(nil,v,depth);if _,_,e:=DecodeManifestHoldersAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeManifestHolders(v *ManifestHolders)[]byte{return append(EncodeManifestHoldersAt(v,0),"\n"...)}
-func DecodeManifestHolders(in []byte)(*ManifestHolders,error){v,n,e:=DecodeManifestHoldersAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeManifestHolders(in []byte)(*ManifestHolders,error){v,n,e:=DecodeManifestHoldersAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeObjectHoldersAt(in []byte,depth,limit int)(*ObjectHolders,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeObjectHolders();return v,r.pos,e}
-func EncodeObjectHoldersAt(v *ObjectHolders,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encObjectHolders(nil,v,depth);if _,_,e:=DecodeObjectHoldersAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeObjectHoldersAt(v *ObjectHolders,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encObjectHolders(nil,v,depth);if _,_,e:=DecodeObjectHoldersAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeObjectHolders(v *ObjectHolders)[]byte{return append(EncodeObjectHoldersAt(v,0),"\n"...)}
-func DecodeObjectHolders(in []byte)(*ObjectHolders,error){v,n,e:=DecodeObjectHoldersAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeObjectHolders(in []byte)(*ObjectHolders,error){v,n,e:=DecodeObjectHoldersAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeInventoryPageAt(in []byte,depth,limit int)(*InventoryPage,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeInventoryPage();return v,r.pos,e}
-func EncodeInventoryPageAt(v *InventoryPage,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encInventoryPage(nil,v,depth);if _,_,e:=DecodeInventoryPageAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeInventoryPageAt(v *InventoryPage,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encInventoryPage(nil,v,depth);if _,_,e:=DecodeInventoryPageAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeInventoryPage(v *InventoryPage)[]byte{return append(EncodeInventoryPageAt(v,0),"\n"...)}
-func DecodeInventoryPage(in []byte)(*InventoryPage,error){v,n,e:=DecodeInventoryPageAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeInventoryPage(in []byte)(*InventoryPage,error){v,n,e:=DecodeInventoryPageAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeRemoveResultAt(in []byte,depth,limit int)(*RemoveResult,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeRemoveResult();return v,r.pos,e}
-func EncodeRemoveResultAt(v *RemoveResult,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encRemoveResult(nil,v,depth);if _,_,e:=DecodeRemoveResultAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeRemoveResultAt(v *RemoveResult,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encRemoveResult(nil,v,depth);if _,_,e:=DecodeRemoveResultAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeRemoveResult(v *RemoveResult)[]byte{return append(EncodeRemoveResultAt(v,0),"\n"...)}
-func DecodeRemoveResult(in []byte)(*RemoveResult,error){v,n,e:=DecodeRemoveResultAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeRemoveResult(in []byte)(*RemoveResult,error){v,n,e:=DecodeRemoveResultAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeSourceDescriptionAt(in []byte,depth,limit int)(*SourceDescription,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeSourceDescription();return v,r.pos,e}
-func EncodeSourceDescriptionAt(v *SourceDescription,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourceDescription(nil,v,depth);if _,_,e:=DecodeSourceDescriptionAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeSourceDescriptionAt(v *SourceDescription,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourceDescription(nil,v,depth);if _,_,e:=DecodeSourceDescriptionAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeSourceDescription(v *SourceDescription)[]byte{return append(EncodeSourceDescriptionAt(v,0),"\n"...)}
-func DecodeSourceDescription(in []byte)(*SourceDescription,error){v,n,e:=DecodeSourceDescriptionAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeSourceDescription(in []byte)(*SourceDescription,error){v,n,e:=DecodeSourceDescriptionAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeSourceChangeAt(in []byte,depth,limit int)(*SourceChange,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeSourceChange();return v,r.pos,e}
-func EncodeSourceChangeAt(v *SourceChange,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourceChange(nil,v,depth);if _,_,e:=DecodeSourceChangeAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeSourceChangeAt(v *SourceChange,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourceChange(nil,v,depth);if _,_,e:=DecodeSourceChangeAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeSourceChange(v *SourceChange)[]byte{return append(EncodeSourceChangeAt(v,0),"\n"...)}
-func DecodeSourceChange(in []byte)(*SourceChange,error){v,n,e:=DecodeSourceChangeAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeSourceChange(in []byte)(*SourceChange,error){v,n,e:=DecodeSourceChangeAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
 
 func DecodeSourcePageAt(in []byte,depth,limit int)(*SourcePage,int,error){r:=&reader{buf:in,depth:depth,limit:limit};if depth<0||limit<1{return nil,0,r.refuse("depth_exceeded")};r.ws();v,e:=r.decodeSourcePage();return v,r.pos,e}
-func EncodeSourcePageAt(v *SourcePage,depth int)[]byte{if depth<0||depth>=depthLimit{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourcePage(nil,v,depth);if _,_,e:=DecodeSourcePageAt(out,depth,depthLimit);e!=nil{panic(e)};return out}
+func EncodeSourcePageAt(v *SourcePage,depth int)[]byte{if depth<0||depth>=64{panic(&Refusal{Word:"depth_exceeded"})};out:=encSourcePage(nil,v,depth);if _,_,e:=DecodeSourcePageAt(out,depth,64);e!=nil{panic(e)};return out}
 func EncodeSourcePage(v *SourcePage)[]byte{return append(EncodeSourcePageAt(v,0),"\n"...)}
-func DecodeSourcePage(in []byte)(*SourcePage,error){v,n,e:=DecodeSourcePageAt(in,0,depthLimit);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}
+func DecodeSourcePage(in []byte)(*SourcePage,error){v,n,e:=DecodeSourcePageAt(in,0,64);if e!=nil{return nil,e};r:=&reader{buf:in,pos:n};r.ws();if r.pos!=len(in){return nil,r.refuse("trailing_bytes")};return v,nil}

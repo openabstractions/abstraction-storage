@@ -96,15 +96,11 @@ func Discover() []Store {
 	return out
 }
 
+// hexOf returns the hex part of a digest in the grammar ValidDigest accepts,
+// or empty for any other form, before any path is built from it.
 func hexOf(digest string) string {
-	hex := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(digest)), "sha256:")
-	if len(hex) != 64 {
+	if !ValidDigest(digest) {
 		return ""
 	}
-	for _, c := range hex {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return ""
-		}
-	}
-	return hex
+	return digest[7:]
 }

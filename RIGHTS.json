@@ -74,16 +74,18 @@
         ],
         "resource_profile": "abstraction.rights/legacy-exact-string@1",
         "resource_type": "string (legacy exact resource)",
-        "enforced_by": [],
-        "disclosure": "Defined removal of content; the content-remover@1 receiving service is unserved.",
-        "lifecycle": "Defined exact content resource; no current receiving enforcement or first-use admission.",
+        "enforced_by": [
+          "abstraction.storage/content-remover@1"
+        ],
+        "disclosure": "Remove verified unheld content through the Panel operator.",
+        "lifecycle": "A bound Panel operator requires the exact account and store rights and confirmed removal. Held or in-use content is refused.",
         "first_use": "none",
-        "served": false
+        "served": true
       },
       "label": "abstraction.storage/content.remove",
       "supported_selectors": [],
       "first_use_selectors": [],
-      "collection": "Defined exact content resource; no current receiving enforcement or first-use admission.",
+      "collection": "A bound Panel operator requires the exact account and store rights and confirmed removal. Held or in-use content is refused.",
       "all_effect": "",
       "request_type": "string (legacy exact resource)"
     },
@@ -112,6 +114,32 @@
       "collection": "One upload or typed profile; write right supplies no unrelated read permission.",
       "all_effect": "",
       "request_type": "string (legacy exact resource)"
+    },
+    {
+      "definition": {
+        "action": "abstraction.storage/holds.manage",
+        "owner_contract": "abstraction.storage/holds@1",
+        "operations": [
+          "abstraction.storage/holds@1#Hold",
+          "abstraction.storage/holds@1#Release",
+          "abstraction.storage/holds@1#Renew"
+        ],
+        "resource_profile": "abstraction.storage/holds-self@1",
+        "resource_type": "string (literal self)",
+        "enforced_by": [
+          "abstraction.storage/holds@1"
+        ],
+        "disclosure": "Declare, release or renew the authenticated bound program's own holds in the owner account.",
+        "lifecycle": "Only the literal resource self. The contract permits the bound program by default and honors explicit refusal. A hold does not confer cross-program authority.",
+        "first_use": "none",
+        "served": true
+      },
+      "label": "abstraction.storage/holds.manage",
+      "supported_selectors": [],
+      "first_use_selectors": [],
+      "collection": "Only the literal resource self. The contract permits the bound program by default and honors explicit refusal. A hold does not confer cross-program authority.",
+      "all_effect": "",
+      "request_type": "string (literal self)"
     },
     {
       "definition": {

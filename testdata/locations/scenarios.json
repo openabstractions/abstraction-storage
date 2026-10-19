@@ -1,0 +1,896 @@
+{
+  "about": "Scenarios for the storage contract's Locations section (STO-L1 to STO-L9). Each names the rules it shows, a call, the operating system's answers and the expected result. Paths are spelled for the scenario's os, whatever machine runs it. README.md beside this file defines every call and field.",
+  "scenarios": [
+    {
+      "name": "windows-user-roots",
+      "rules": ["STO-L1", "STO-L5"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "expect": {
+        "roots": {
+          "data": "C:\\Users\\ada\\AppData\\Local\\openabstractions",
+          "runtime": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\runtime-v1",
+          "config": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\config",
+          "cache": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\cache",
+          "logs": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\logs",
+          "tmp": "C:\\Users\\ada\\AppData\\Local\\Temp\\openabstractions",
+          "short": "C:\\Users\\ada\\AppData\\Local\\oa",
+          "sockets": "C:\\Users\\ada\\AppData\\Local\\oa\\s",
+          "upgrade_v1": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\upgrade-v1",
+          "config_file": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\config\\config.json",
+          "provider_data": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\provider-data\\example",
+          "engines": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\engines\\example\\1.0",
+          "models": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\models",
+          "setup": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\setup",
+          "mcp_gateway": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\mcp-gateway"
+        },
+        "outside": ["C:\\Users\\ada\\AppData\\Roaming"],
+        "not_child_of": "C:\\Users\\ada"
+      }
+    },
+    {
+      "name": "macos-user-roots",
+      "rules": ["STO-L1", "STO-L5"],
+      "call": "user",
+      "platform": {"os": "darwin", "env": {"HOME": "/Users/ada", "TMPDIR": "/var/folders/xy/T/"}, "uid": 501},
+      "expect": {
+        "roots": {
+          "data": "/Users/ada/Library/Application Support/openabstractions",
+          "runtime": "/Users/ada/Library/Application Support/openabstractions/runtime-v1",
+          "config": "/Users/ada/Library/Application Support/openabstractions/config",
+          "cache": "/Users/ada/Library/Caches/openabstractions",
+          "logs": "/Users/ada/Library/Logs/openabstractions",
+          "tmp": "/var/folders/xy/T/openabstractions",
+          "short": "",
+          "sockets": "/var/folders/xy/T/oa",
+          "install": "/Users/ada/Library/Application Support/openabstractions/install",
+          "config_file": "/Users/ada/Library/Application Support/openabstractions/config/config.json",
+          "provider_data": "/Users/ada/Library/Application Support/openabstractions/provider-data/example",
+          "engines": "/Users/ada/Library/Application Support/openabstractions/engines/example/1.0",
+          "models": "/Users/ada/Library/Application Support/openabstractions/models",
+          "setup": "/Users/ada/Library/Application Support/openabstractions/setup",
+          "mcp_gateway": "/Users/ada/Library/Application Support/openabstractions/mcp-gateway"
+        },
+        "not_child_of": "/Users/ada"
+      }
+    },
+    {
+      "name": "linux-user-roots-defaults",
+      "rules": ["STO-L1", "STO-L5"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "expect": {
+        "roots": {
+          "data": "/home/ada/.local/share/openabstractions",
+          "runtime": "/home/ada/.local/share/openabstractions/runtime-v1",
+          "config": "/home/ada/.config/openabstractions",
+          "cache": "/home/ada/.cache/openabstractions",
+          "logs": "/home/ada/.local/state/log/openabstractions",
+          "tmp": "/var/tmp/openabstractions-1000",
+          "short": "",
+          "sockets": "/tmp/oa-1000",
+          "install": "/home/ada/.local/share/openabstractions/install",
+          "config_file": "/home/ada/.config/openabstractions/config.json",
+          "provider_data": "/home/ada/.local/share/openabstractions/provider-data/example",
+          "engines": "/home/ada/.local/share/openabstractions/engines/example/1.0",
+          "models": "/home/ada/.local/share/openabstractions/models",
+          "setup": "/home/ada/.local/share/openabstractions/setup",
+          "mcp_gateway": "/home/ada/.local/share/openabstractions/mcp-gateway"
+        },
+        "not_child_of": "/home/ada"
+      }
+    },
+    {
+      "name": "linux-user-roots-xdg",
+      "rules": ["STO-L1"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada", "XDG_DATA_HOME": "/data/ada", "XDG_CONFIG_HOME": "/conf/ada", "XDG_CACHE_HOME": "/fast/ada", "XDG_STATE_HOME": "/state/ada", "XDG_RUNTIME_DIR": "/run/user/1000", "TMPDIR": "/scratch"}, "uid": 1000},
+      "expect": {
+        "roots": {
+          "data": "/data/ada/openabstractions",
+          "runtime": "/data/ada/openabstractions/runtime-v1",
+          "config": "/conf/ada/openabstractions",
+          "cache": "/fast/ada/openabstractions",
+          "logs": "/state/ada/log/openabstractions",
+          "tmp": "/scratch/openabstractions-1000",
+          "sockets": "/run/user/1000/oa"
+        }
+      }
+    },
+    {
+      "name": "linux-relative-xdg-ignored",
+      "rules": ["STO-L1", "STO-L3"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada", "XDG_DATA_HOME": "relative/data", "TMPDIR": "tmp"}, "uid": 1000},
+      "expect": {"roots": {"data": "/home/ada/.local/share/openabstractions", "tmp": "/var/tmp/openabstractions-1000"}}
+    },
+    {
+      "name": "caller-named-destination-is-outside",
+      "rules": ["STO-L1", "STO-L5"],
+      "call": "classify",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "args": {"path": "C:\\Users\\ada\\Downloads\\model.gguf"},
+      "expect": {"root": ""}
+    },
+    {
+      "name": "nas-store-is-outside",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "args": {"path": "\\\\nas\\models\\store\\blobs\\sha256-0a1b"},
+      "expect": {"root": ""}
+    },
+    {
+      "name": "adopted-folder-is-outside",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"path": "/home/ada/llm-models/qwen3/model.gguf"},
+      "expect": {"root": ""}
+    },
+    {
+      "name": "cache-is-its-own-root-inside-data",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "args": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\cache\\panel\\webview2"},
+      "expect": {"root": "cache"}
+    },
+    {
+      "name": "runtime-state-is-the-runtime-root",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"path": "/home/ada/.local/share/openabstractions/runtime-v1/rights/rights.json"},
+      "expect": {"root": "runtime"}
+    },
+    {
+      "name": "windows-virtualized-profile-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp", "view": "Claude_pzs8sxrjxfjjc"},
+      "expect": {"refusal": "virtualized_profile"}
+    },
+    {
+      "name": "windows-unknown-profile-view-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp", "view_error": "the probe failed"},
+      "expect": {"refusal": "unknown_profile_view"}
+    },
+    {
+      "name": "windows-missing-known-folder-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "windows-relative-known-folder-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {"LocalAppData": "AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "linux-no-home-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {}, "uid": 1000},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "macos-relative-home-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "darwin", "env": {"HOME": "Users/ada"}, "uid": 501},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "flatpak-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000, "sandbox": "flatpak"},
+      "expect": {"refusal": "sandboxed"}
+    },
+    {
+      "name": "app-sandbox-refuses-the-machine-root",
+      "rules": ["STO-L3"],
+      "call": "machine",
+      "platform": {"os": "darwin", "env": {"HOME": "/Users/ada"}, "uid": 501, "sandbox": "app-sandbox"},
+      "expect": {"refusal": "sandboxed"}
+    },
+    {
+      "name": "windows-machine-roots",
+      "rules": ["STO-L4"],
+      "call": "machine",
+      "platform": {"os": "windows", "known": {"ProgramData": "C:\\ProgramData"}},
+      "expect": {"machine": {
+        "root": "C:\\ProgramData\\openabstractions",
+        "config_file": "C:\\ProgramData\\openabstractions\\config\\config.json",
+        "state": "C:\\ProgramData\\openabstractions",
+        "old_config_file": "C:\\ProgramData\\abstraction\\config.json",
+        "upgrade_v1": "C:\\ProgramData\\abstraction\\upgrade-v1"
+      }}
+    },
+    {
+      "name": "macos-machine-roots",
+      "rules": ["STO-L4"],
+      "call": "machine",
+      "platform": {"os": "darwin", "env": {"HOME": "/Users/ada"}, "uid": 501},
+      "expect": {"machine": {
+        "root": "/Library/Application Support/openabstractions",
+        "config_file": "/Library/Application Support/openabstractions/config/config.json",
+        "state": "/Library/Application Support/openabstractions",
+        "old_config_file": "/etc/abstraction/config.json",
+        "upgrade_v1": ""
+      }}
+    },
+    {
+      "name": "linux-machine-roots",
+      "rules": ["STO-L4"],
+      "call": "machine",
+      "platform": {"os": "linux", "env": {}, "uid": 1000},
+      "expect": {"machine": {
+        "root": "/etc/openabstractions",
+        "config_file": "/etc/openabstractions/config.json",
+        "state": "/var/lib/openabstractions",
+        "old_config_file": "/etc/abstraction/config.json",
+        "upgrade_v1": ""
+      }}
+    },
+    {
+      "name": "machine-file-administrators-wrote-is-read",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": [
+        {"path": "C:\\ProgramData\\openabstractions\\config\\config.json", "exists": true, "owner": "admin", "writers": ["admin"], "readers": ["other"]},
+        {"path": "C:\\ProgramData\\openabstractions\\config", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"], "readers": ["other"]},
+        {"path": "C:\\ProgramData\\openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"], "readers": ["other"]}
+      ]},
+      "expect": {"ok": true}
+    },
+    {
+      "name": "planted-machine-file-is-ignored",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": [
+        {"path": "C:\\ProgramData\\openabstractions\\config\\config.json", "exists": true, "owner": "other", "owner_name": "PC\\mallory", "writers": ["other"]},
+        {"path": "C:\\ProgramData\\openabstractions\\config", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"]},
+        {"path": "C:\\ProgramData\\openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"]}
+      ]},
+      "expect": {"refusal": "machine_untrusted"}
+    },
+    {
+      "name": "pre-created-machine-root-is-untrusted",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": [
+        {"path": "C:\\ProgramData\\openabstractions\\config\\config.json", "exists": true, "owner": "admin", "writers": ["admin"]},
+        {"path": "C:\\ProgramData\\openabstractions\\config", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"]},
+        {"path": "C:\\ProgramData\\openabstractions", "exists": true, "dir": true, "owner": "other", "owner_name": "PC\\mallory", "writers": ["other", "admin"]}
+      ]},
+      "expect": {"refusal": "machine_untrusted"}
+    },
+    {
+      "name": "group-writable-etc-is-ignored",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": [
+        {"path": "/etc/openabstractions/config.json", "exists": true, "owner": "admin", "writers": ["admin"], "readers": ["other"]},
+        {"path": "/etc/openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin", "other"]}
+      ]},
+      "expect": {"refusal": "machine_untrusted"}
+    },
+    {
+      "name": "missing-machine-file-is-absent",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": [
+        {"path": "/etc/openabstractions/config.json", "exists": false},
+        {"path": "/etc/openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"]}
+      ]},
+      "expect": {"refusal": "machine_absent"}
+    },
+    {
+      "name": "windows-person-pictures-is-the-known-folder",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "windows", "known": {"Pictures": "D:\\Photos"}},
+      "args": {"folder": "pictures"},
+      "expect": {"path": "D:\\Photos"}
+    },
+    {
+      "name": "linux-person-pictures-from-user-dirs",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000, "files": {"/home/ada/.config/user-dirs.dirs": "# written by xdg-user-dirs-update\nXDG_PICTURES_DIR=\"$HOME/Bilder\"\n"}},
+      "args": {"folder": "pictures"},
+      "expect": {"path": "/home/ada/Bilder"}
+    },
+    {
+      "name": "linux-person-folder-switched-off-refused",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000, "files": {"/home/ada/.config/user-dirs.dirs": "XDG_DESKTOP_DIR=\"$HOME/\"\n"}},
+      "args": {"folder": "desktop"},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "macos-person-videos-is-movies",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "darwin", "env": {"HOME": "/Users/ada"}, "uid": 501},
+      "args": {"folder": "videos"},
+      "expect": {"path": "/Users/ada/Movies"}
+    },
+    {
+      "name": "linux-isolated-roots",
+      "rules": ["STO-L6"],
+      "call": "isolated",
+      "platform": {"os": "linux"},
+      "args": {"root": "/srv/oa/run1"},
+      "expect": {"roots": {
+        "data": "/srv/oa/run1",
+        "runtime": "/srv/oa/run1",
+        "config": "/srv/oa/run1/config",
+        "cache": "/srv/oa/run1/cache",
+        "logs": "/srv/oa/run1/logs",
+        "tmp": "/srv/oa/run1/tmp",
+        "short": "/srv/oa/run1/oa",
+        "sockets": "/srv/oa/run1/oa/s",
+        "install": "",
+        "upgrade_v1": "",
+        "provider_data": "/srv/oa/run1/provider-data/example",
+        "engines": "/srv/oa/run1/engines/example/1.0",
+        "models": "/srv/oa/run1/models",
+        "setup": "/srv/oa/run1/setup",
+        "mcp_gateway": "/srv/oa/run1/mcp-gateway",
+        "config_file": "/srv/oa/run1/config/config.json"
+      }}
+    },
+    {
+      "name": "windows-isolated-roots-in-a-virtualized-view",
+      "rules": ["STO-L6"],
+      "call": "isolated",
+      "platform": {"os": "windows", "view": "Claude_pzs8sxrjxfjjc"},
+      "args": {"root": "D:\\oa-test\\S"},
+      "expect": {"roots": {
+        "data": "D:\\oa-test\\S",
+        "runtime": "D:\\oa-test\\S",
+        "tmp": "D:\\oa-test\\S\\tmp",
+        "short": "D:\\oa-test\\S\\oa",
+        "sockets": "D:\\oa-test\\S\\oa\\s"
+      }}
+    },
+    {
+      "name": "isolated-relative-root-refused",
+      "rules": ["STO-L6"],
+      "call": "isolated",
+      "platform": {"os": "linux"},
+      "args": {"root": "state"},
+      "expect": {"refusal": "not_absolute"}
+    },
+    {
+      "name": "isolated-long-root-sockets-refused",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux"},
+      "args": {"location": "isolated", "root": "/tmp/TestEnginesStartUnderAnIsolatedRootWithAVeryLongName/0123456789/001/runtime-state-folder", "kind": "s"},
+      "expect": {"refusal": "path_too_long"}
+    },
+    {
+      "name": "isolated-short-root-sockets-fit",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux"},
+      "args": {"location": "isolated", "root": "/tmp/oa-t1", "kind": "s"},
+      "expect": {"path": "/tmp/oa-t1/oa/s"}
+    },
+    {
+      "name": "windows-isolated-long-gpu-engine-refused",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "windows"},
+      "args": {"location": "isolated", "root": "C:\\Users\\ada\\AppData\\Local\\Temp\\TestEnginesStartUnderAnIsolatedRoot\\001", "kind": "e", "elems": ["thenoise", "0.9.1"]},
+      "expect": {"refusal": "path_too_long"}
+    },
+    {
+      "name": "windows-user-gpu-engine-under-the-short-root",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "args": {"location": "user", "kind": "e", "elems": ["thenoise", "0.9.1"]},
+      "expect": {"path": "C:\\Users\\ada\\AppData\\Local\\oa\\e\\thenoise\\0.9.1"}
+    },
+    {
+      "name": "linux-user-gpu-engine-under-data",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"location": "user", "kind": "e", "elems": ["thenoise", "0.9.1"]},
+      "expect": {"path": "/home/ada/.local/share/openabstractions/engines/thenoise/0.9.1"}
+    },
+    {
+      "name": "missing-root-is-created",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/home/ada/.local/share/openabstractions", "exists": false}},
+      "expect": {"action": "create"}
+    },
+    {
+      "name": "pre-created-0755-root-is-tightened",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/home/ada/.local/share/openabstractions", "exists": true, "dir": true, "owner": "self", "mine": true, "writers": ["self"], "readers": ["other"]}},
+      "expect": {"action": "tighten"}
+    },
+    {
+      "name": "owner-only-root-is-kept",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/home/ada/.local/share/openabstractions", "exists": true, "dir": true, "owner": "self", "mine": true, "writers": ["self"], "private": true}},
+      "expect": {"action": "keep"}
+    },
+    {
+      "name": "root-of-another-uid-is-refused",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/home/ada/.local/share/openabstractions", "exists": true, "dir": true, "owner": "other", "owner_name": "uid 1001", "writers": ["other"]}},
+      "expect": {"refusal": "not_owner"}
+    },
+    {
+      "name": "root-owned-root-is-refused-for-a-user",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/srv/S", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"]}},
+      "expect": {"refusal": "not_owner"}
+    },
+    {
+      "name": "group-writable-root-is-refused",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/srv/S", "exists": true, "dir": true, "owner": "self", "mine": true, "writers": ["self", "other"]}},
+      "expect": {"refusal": "open_to_others"}
+    },
+    {
+      "name": "state-dir-link-to-another-account-is-refused",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/srv/S", "exists": true, "link": true, "owner": "self", "mine": true}},
+      "expect": {"refusal": "link"}
+    },
+    {
+      "name": "file-in-place-of-a-root-is-refused",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "windows"},
+      "args": {"entry": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions", "exists": true, "owner": "self", "mine": true, "writers": ["self"]}},
+      "expect": {"refusal": "not_directory"}
+    },
+    {
+      "name": "windows-root-an-elevated-process-made-is-tightened",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "windows"},
+      "args": {"entry": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin", "self"]}},
+      "expect": {"action": "tighten"}
+    },
+    {
+      "name": "windows-root-with-the-profile-dacl-is-tightened",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "windows"},
+      "args": {"entry": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions", "exists": true, "dir": true, "owner": "self", "mine": true, "writers": ["self", "admin"]}},
+      "expect": {"action": "tighten"}
+    },
+    {
+      "name": "windows-private-root-is-kept",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "windows"},
+      "args": {"entry": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions", "exists": true, "dir": true, "owner": "self", "mine": true, "writers": ["self", "admin"], "private": true}},
+      "expect": {"action": "keep"}
+    },
+    {
+      "name": "windows-root-everyone-may-read-is-tightened",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "windows"},
+      "args": {"entry": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions", "exists": true, "dir": true, "owner": "self", "mine": true, "writers": ["self", "admin"], "readers": ["other"]}},
+      "expect": {"action": "tighten"}
+    },
+    {
+      "name": "roots-are-cleaned",
+      "rules": ["STO-L1"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada/", "XDG_DATA_HOME": "/data//ada/"}, "uid": 1000},
+      "expect": {"roots": {"data": "/data/ada/openabstractions", "config": "/home/ada/.config/openabstractions"}}
+    },
+    {
+      "name": "isolated-root-is-cleaned",
+      "rules": ["STO-L1", "STO-L6"],
+      "call": "isolated",
+      "platform": {"os": "linux"},
+      "args": {"root": "/srv/oa//run1/"},
+      "expect": {"roots": {"data": "/srv/oa/run1", "config": "/srv/oa/run1/config"}}
+    },
+    {
+      "name": "windows-classify-compares-spellings",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "args": {"path": "C:\\USERS\\ADA\\APPDATA\\LOCAL\\OPENABSTRACTIONS\\CACHE\\panel"},
+      "expect": {"root": ""}
+    },
+    {
+      "name": "engines-classify-as-data",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"path": "/home/ada/.local/share/openabstractions/engines/thenoise/0.9.1/bin/engine"},
+      "expect": {"root": "data"}
+    },
+    {
+      "name": "windows-socket-folder-classifies-as-sockets",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "args": {"path": "C:\\Users\\ada\\AppData\\Local\\oa\\s\\0a1b2c3d\\e.sock"},
+      "expect": {"root": "sockets"}
+    },
+    {
+      "name": "windows-gpu-engine-classifies-as-short",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "args": {"path": "C:\\Users\\ada\\AppData\\Local\\oa\\e\\thenoise\\0.9.1"},
+      "expect": {"root": "short"}
+    },
+    {
+      "name": "linux-tmp-classifies-as-tmp",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"path": "/var/tmp/openabstractions-1000/upload-1"},
+      "expect": {"root": "tmp"}
+    },
+    {
+      "name": "relative-path-classifies-under-none",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"path": ".local/share/openabstractions/cache"},
+      "expect": {"root": ""}
+    },
+    {
+      "name": "classify-cleans-the-path",
+      "rules": ["STO-L1"],
+      "call": "classify",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"path": "/home/ada/.local/share/openabstractions/cache/../runtime-v1/jobs"},
+      "expect": {"root": "runtime"}
+    },
+    {
+      "name": "windows-missing-temp-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "windows-relative-temp-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "Temp"},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "linux-no-home-with-xdg-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {"XDG_DATA_HOME": "/data/ada", "XDG_CONFIG_HOME": "/conf/ada", "XDG_CACHE_HOME": "/fast/ada", "XDG_STATE_HOME": "/state/ada"}, "uid": 1000},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "linux-relative-runtime-dir-falls-back",
+      "rules": ["STO-L1", "STO-L3"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada", "XDG_RUNTIME_DIR": "run/user/1000", "TMPDIR": ""}, "uid": 1000},
+      "expect": {"roots": {"sockets": "/tmp/oa-1000", "tmp": "/var/tmp/openabstractions-1000"}}
+    },
+    {
+      "name": "macos-relative-tmpdir-falls-back",
+      "rules": ["STO-L1", "STO-L3"],
+      "call": "user",
+      "platform": {"os": "darwin", "env": {"HOME": "/Users/ada", "TMPDIR": "T"}, "uid": 501},
+      "expect": {"roots": {"tmp": "/var/tmp/openabstractions-501", "sockets": "/tmp/oa-501"}}
+    },
+    {
+      "name": "sandbox-outranks-a-missing-home",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {}, "uid": 1000, "sandbox": "flatpak"},
+      "expect": {"refusal": "sandboxed"}
+    },
+    {
+      "name": "snap-refused",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000, "sandbox": "snap"},
+      "expect": {"refusal": "sandboxed"}
+    },
+    {
+      "name": "unreadable-view-outranks-a-virtualized-view",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp", "view": "Claude_pzs8sxrjxfjjc", "view_error": "the probe failed"},
+      "expect": {"refusal": "unknown_profile_view"}
+    },
+    {
+      "name": "virtualized-view-outranks-a-missing-known-folder",
+      "rules": ["STO-L3"],
+      "call": "user",
+      "platform": {"os": "windows", "known": {}, "view": "Claude_pzs8sxrjxfjjc"},
+      "expect": {"refusal": "virtualized_profile"}
+    },
+    {
+      "name": "windows-machine-in-a-virtualized-view-refused",
+      "rules": ["STO-L3"],
+      "call": "machine",
+      "platform": {"os": "windows", "known": {"ProgramData": "C:\\ProgramData"}, "view": "Claude_pzs8sxrjxfjjc"},
+      "expect": {"refusal": "virtualized_profile"}
+    },
+    {
+      "name": "classify-in-a-virtualized-view-refused",
+      "rules": ["STO-L3"],
+      "call": "classify",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp", "view": "Claude_pzs8sxrjxfjjc"},
+      "args": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions\\cache"},
+      "expect": {"refusal": "virtualized_profile"}
+    },
+    {
+      "name": "user-path-bound-in-a-sandbox-refused",
+      "rules": ["STO-L3"],
+      "call": "path_bound",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000, "sandbox": "flatpak"},
+      "args": {"location": "user", "kind": "e", "elems": ["thenoise", "0.9.1"]},
+      "expect": {"refusal": "sandboxed"}
+    },
+    {
+      "name": "untrusted-folder-outranks-a-missing-file",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": [{"path": "C:\\ProgramData\\openabstractions\\config\\config.json", "exists": false}, {"path": "C:\\ProgramData\\openabstractions\\config", "exists": true, "dir": true, "owner": "other", "owner_name": "PC\\mallory", "writers": ["other"]}, {"path": "C:\\ProgramData\\openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"]}]},
+      "expect": {"refusal": "machine_untrusted"}
+    },
+    {
+      "name": "machine-file-this-account-owns-is-untrusted",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": [{"path": "/etc/openabstractions/config.json", "exists": true, "owner": "self", "mine": true, "writers": ["self"]}, {"path": "/etc/openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"]}]},
+      "expect": {"refusal": "machine_untrusted"}
+    },
+    {
+      "name": "no-machine-file-named-is-absent",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": []},
+      "expect": {"refusal": "machine_absent"}
+    },
+    {
+      "name": "machine-file-reached-through-a-link-is-read",
+      "rules": ["STO-L4"],
+      "call": "trust",
+      "args": {"chain": [{"path": "/etc/openabstractions/config.json", "exists": true, "link": true, "owner": "admin", "writers": ["admin"], "readers": ["other"]}, {"path": "/etc/openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin"], "readers": ["other"]}]},
+      "expect": {"ok": true}
+    },
+    {
+      "name": "linux-person-default-without-user-dirs",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"folder": "videos"},
+      "expect": {"path": "/home/ada/Videos"}
+    },
+    {
+      "name": "linux-person-download-key",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000, "files": {"/home/ada/.config/user-dirs.dirs": "XDG_DOWNLOAD_DIR=\"/data/ada/dl\"\n"}},
+      "args": {"folder": "downloads"},
+      "expect": {"path": "/data/ada/dl"}
+    },
+    {
+      "name": "linux-person-missing-key-default",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000, "files": {"/home/ada/.config/user-dirs.dirs": "XDG_DESKTOP_DIR=\"$HOME/Arbeitsflaeche\"\n"}},
+      "args": {"folder": "documents"},
+      "expect": {"path": "/home/ada/Documents"}
+    },
+    {
+      "name": "linux-person-user-dirs-in-xdg-config-home",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada", "XDG_CONFIG_HOME": "/conf/ada"}, "uid": 1000, "files": {"/conf/ada/user-dirs.dirs": "XDG_MUSIC_DIR=\"$HOME/Musik\"\n"}},
+      "args": {"folder": "music"},
+      "expect": {"path": "/home/ada/Musik"}
+    },
+    {
+      "name": "linux-person-relative-entry-refused",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000, "files": {"/home/ada/.config/user-dirs.dirs": "XDG_MUSIC_DIR=\"Musik\"\n"}},
+      "args": {"folder": "music"},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "windows-person-missing-known-folder-refused",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "windows", "known": {}},
+      "args": {"folder": "documents"},
+      "expect": {"refusal": "no_profile_folder"}
+    },
+    {
+      "name": "windows-person-in-a-virtualized-view-is-read",
+      "rules": ["STO-L5"],
+      "call": "person",
+      "platform": {"os": "windows", "known": {"Pictures": "D:\\Photos"}, "view": "Claude_pzs8sxrjxfjjc"},
+      "args": {"folder": "pictures"},
+      "expect": {"path": "D:\\Photos"}
+    },
+    {
+      "name": "windows-drive-relative-isolated-root-refused",
+      "rules": ["STO-L6"],
+      "call": "isolated",
+      "platform": {"os": "windows"},
+      "args": {"root": "C:oa\\S"},
+      "expect": {"refusal": "not_absolute"}
+    },
+    {
+      "name": "windows-rooted-isolated-root-without-a-drive-refused",
+      "rules": ["STO-L6"],
+      "call": "isolated",
+      "platform": {"os": "windows"},
+      "args": {"root": "\\oa\\S"},
+      "expect": {"refusal": "not_absolute"}
+    },
+    {
+      "name": "isolated-long-root-roots-resolve",
+      "rules": ["STO-L6"],
+      "call": "isolated",
+      "platform": {"os": "linux"},
+      "args": {"root": "/tmp/TestEnginesStartUnderAnIsolatedRootWithAVeryLongName/0123456789/001/runtime-state-folder"},
+      "expect": {"roots": {"sockets": "/tmp/TestEnginesStartUnderAnIsolatedRootWithAVeryLongName/0123456789/001/runtime-state-folder/oa/s"}}
+    },
+    {
+      "name": "linux-user-provider-state-under-data",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"location": "user", "kind": "p", "elems": ["thenoise"]},
+      "expect": {"path": "/home/ada/.local/share/openabstractions/provider-data/thenoise"}
+    },
+    {
+      "name": "linux-user-model-stage-under-data",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada"}, "uid": 1000},
+      "args": {"location": "user", "kind": "m", "elems": ["sdxl-turbo"]},
+      "expect": {"path": "/home/ada/.local/share/openabstractions/models/sdxl-turbo"}
+    },
+    {
+      "name": "linux-user-sockets-are-the-socket-root",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux", "env": {"HOME": "/home/ada", "XDG_RUNTIME_DIR": "/run/user/1000"}, "uid": 1000},
+      "args": {"location": "user", "kind": "s"},
+      "expect": {"path": "/run/user/1000/oa"}
+    },
+    {
+      "name": "sockets-at-the-limit-fit",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux"},
+      "args": {"location": "isolated", "root": "/tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": "s"},
+      "expect": {"path": "/tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/oa/s"}
+    },
+    {
+      "name": "sockets-one-byte-over-the-limit-refused",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux"},
+      "args": {"location": "isolated", "root": "/tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": "s"},
+      "expect": {"refusal": "path_too_long"}
+    },
+    {
+      "name": "windows-gpu-engine-at-the-limit-fits",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "windows"},
+      "args": {"location": "isolated", "root": "C:\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": "e", "elems": ["x"]},
+      "expect": {"path": "C:\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\oa\\e\\x"}
+    },
+    {
+      "name": "windows-gpu-engine-one-unit-over-the-limit-refused",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "windows"},
+      "args": {"location": "isolated", "root": "C:\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "kind": "e", "elems": ["x"]},
+      "expect": {"refusal": "path_too_long"}
+    },
+    {
+      "name": "path-bound-element-leaving-the-folder-refused",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "linux"},
+      "args": {"location": "isolated", "root": "/srv/S", "kind": "e", "elems": ["..", "x"]},
+      "expect": {"refusal": "outside_root"}
+    },
+    {
+      "name": "windows-path-bound-element-with-a-separator-refused",
+      "rules": ["STO-L6"],
+      "call": "path_bound",
+      "platform": {"os": "windows", "known": {"LocalAppData": "C:\\Users\\ada\\AppData\\Local"}, "temp": "C:\\Users\\ada\\AppData\\Local\\Temp"},
+      "args": {"location": "user", "kind": "e", "elems": ["thenoise\\..\\..\\..\\Roaming"]},
+      "expect": {"refusal": "outside_root"}
+    },
+    {
+      "name": "relative-folder-is-refused-before-anything",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "state", "exists": false}},
+      "expect": {"refusal": "not_absolute"}
+    },
+    {
+      "name": "administrator-writer-on-posix-is-tightened",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/srv/S", "exists": true, "dir": true, "owner": "self", "mine": true, "writers": ["self", "admin"]}},
+      "expect": {"action": "tighten"}
+    },
+    {
+      "name": "root-runtime-keeps-the-root-it-owns",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/srv/S", "exists": true, "dir": true, "owner": "admin", "mine": true, "writers": ["admin"], "private": true}},
+      "expect": {"action": "keep"}
+    },
+    {
+      "name": "owner-self-is-this-account",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "linux"},
+      "args": {"entry": {"path": "/srv/S", "exists": true, "dir": true, "owner": "self", "writers": ["self"], "private": true}},
+      "expect": {"action": "keep"}
+    },
+    {
+      "name": "windows-root-administrators-own-and-others-write-is-refused",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "windows"},
+      "args": {"entry": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions", "exists": true, "dir": true, "owner": "admin", "writers": ["admin", "other"]}},
+      "expect": {"refusal": "open_to_others"}
+    },
+    {
+      "name": "windows-root-another-account-owns-is-refused",
+      "rules": ["STO-L9"],
+      "call": "owner_only",
+      "platform": {"os": "windows"},
+      "args": {"entry": {"path": "C:\\Users\\ada\\AppData\\Local\\openabstractions", "exists": true, "dir": true, "owner": "other", "owner_name": "PC\\mallory", "writers": ["other"]}},
+      "expect": {"refusal": "not_owner"}
+    }
+  ]
+}

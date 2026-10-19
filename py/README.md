@@ -7,14 +7,14 @@ under Reading content and Writing content. This page covers the Python
 client's own scope, waiting and recovery rules.
 
 Install the current abstraction-storage-content package with the facade storage
-extra and shared IPC package. `Machine().resolve_storage(scope="local")` selects
+extra and shared IPC package. `Machine().resolve_storage(scope=Scope.LOCAL)` selects
 one authorized content reader; absence and authorization refusals are explicit.
 `open`, `read`, `close` use generated request/reply codecs. `copy(resource, writer)`
 streams at most 64 KiB per request under one total wait budget and reports partial
 confirmed writes through CopyError. A cancelled wait leaves the resource open;
 close remains explicit and is permitted after authorization revocation.
 
-`Machine().resolve_storage_writer(scope="local")` selects the separate content
+`Machine().resolve_storage_writer(scope=Scope.LOCAL)` selects the separate content
 writer. `begin`, `append`, `commit` and `abort` validate inputs before any
 exchange and check result consistency; write authorization remains the
 service's decision. `write(request, digest, data)` uploads at most 64 KiB per

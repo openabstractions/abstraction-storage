@@ -8,11 +8,13 @@ import (
 	identity "github.com/openabstractions/abstraction-identity"
 	storage "github.com/openabstractions/abstraction-storage/go"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	cursorcodec "github.com/openabstractions/abstraction-watch/go/cursor"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
+
+	watch "github.com/openabstractions/abstraction-watch/go"
 )
 
 const (
@@ -47,8 +49,7 @@ type changeJournal struct {
 	ring      []api.Change
 	known     map[string]int64
 	snapshots map[string]*snapshot
-	notify    chan struct{}
-	waiters   chan struct{}
+	gate      *watch.Gate
 	listing   bool
 	closed    bool
 	now       func() time.Time
@@ -69,7 +70,7 @@ func newChangeJournal(store storage.Store, read, observe Policy, capacity int) (
 		return nil, err
 	}
 	j := &changeJournal{read: read, observe: observe, epoch: epoch, capacity: capacity, known: map[string]int64{},
-		snapshots: map[string]*snapshot{}, notify: make(chan struct{}), waiters: make(chan struct{}, MaxChangeWaiters), listing: true, now: time.Now}
+		snapshots: map[string]*snapshot{}, gate: watch.NewGate(MaxChangeWaiters), listing: true, now: time.Now}
 	if lister, ok := store.(storage.Lister); ok {
 		j.lister = lister
 		refs, err := lister.List(MaxListedObjects)
@@ -90,8 +91,7 @@ func (j *changeJournal) appendLocked(kind api.ChangeKind, digest string, size in
 	if len(j.ring) > j.capacity {
 		j.ring = append([]api.Change(nil), j.ring[len(j.ring)-j.capacity:]...)
 	}
-	close(j.notify)
-	j.notify = make(chan struct{})
+	j.gate.Advance()
 }
 
 // committed journals a service-mediated publish of a new object.
@@ -170,13 +170,13 @@ func (j *changeJournal) close() {
 	defer j.mu.Unlock()
 	if !j.closed {
 		j.closed = true
-		close(j.notify)
+		j.gate.Fail(errors.New("storage: change journal closed"))
 		j.snapshots = map[string]*snapshot{}
 	}
 }
 
 func (j *changeJournal) cursorLocked(sequence int64) string {
-	return j.epoch + ":" + strconv.FormatInt(sequence, 10)
+	return (cursorcodec.Codec{Separator: ":"}).Encode(cursorcodec.Envelope{Epoch: j.epoch, Payload: strconv.FormatInt(sequence, 10)})
 }
 
 type changesReceiver struct {
@@ -203,32 +203,32 @@ func (c changesReceiver) readable(digest string) string {
 	return "skip"
 }
 
-// collect returns a page after the cursor, the journal notification channel
-// observed with it, and a refusal outcome.
-func (c changesReceiver) collect(cursor string, max int64) (api.ChangePage, <-chan struct{}, api.ChangePageOutcome) {
+// collect returns a page after the cursor and a refusal outcome.
+func (c changesReceiver) collect(cursor string, max int64) (api.ChangePage, api.ChangePageOutcome) {
 	j := c.journal
 	j.mu.Lock()
 	if j.closed || !j.listing {
 		j.mu.Unlock()
-		return api.ChangePage{}, nil, api.ChangePageOutcomeUnavailable
+		return api.ChangePage{}, api.ChangePageOutcomeUnavailable
 	}
-	epoch, word, ok := strings.Cut(cursor, ":")
+	envelope, ok := (cursorcodec.Codec{Separator: ":"}).Parse(cursor)
+	word := envelope.Payload
 	sequence, err := strconv.ParseInt(word, 10, 64)
 	if !ok || err != nil || sequence < 0 || strconv.FormatInt(sequence, 10) != word {
 		j.mu.Unlock()
-		return api.ChangePage{}, nil, api.ChangePageOutcomeInvalid
+		return api.ChangePage{}, api.ChangePageOutcomeInvalid
 	}
-	if epoch != j.epoch {
+	if !envelope.Bound(j.epoch, "") {
 		j.mu.Unlock()
-		return api.ChangePage{}, nil, api.ChangePageOutcomeGap
+		return api.ChangePage{}, api.ChangePageOutcomeGap
 	}
 	if sequence > j.last {
 		j.mu.Unlock()
-		return api.ChangePage{}, nil, api.ChangePageOutcomeInvalid
+		return api.ChangePage{}, api.ChangePageOutcomeInvalid
 	}
 	if len(j.ring) > 0 && sequence < j.ring[0].Sequence-1 {
 		j.mu.Unlock()
-		return api.ChangePage{}, nil, api.ChangePageOutcomeGap
+		return api.ChangePage{}, api.ChangePageOutcomeGap
 	}
 	var candidates []api.Change
 	for _, change := range j.ring {
@@ -236,7 +236,6 @@ func (c changesReceiver) collect(cursor string, max int64) (api.ChangePage, <-ch
 			candidates = append(candidates, change)
 		}
 	}
-	notify := j.notify
 	j.mu.Unlock()
 
 	page := api.ChangePage{Outcome: api.ChangePageOutcomePage, Changes: []api.Change{}, AtEnd: true}
@@ -248,7 +247,7 @@ func (c changesReceiver) collect(cursor string, max int64) (api.ChangePage, <-ch
 		}
 		switch c.readable(change.Digest) {
 		case "unavailable":
-			return api.ChangePage{}, nil, api.ChangePageOutcomeUnavailable
+			return api.ChangePage{}, api.ChangePageOutcomeUnavailable
 		case "":
 			page.Changes = append(page.Changes, change)
 		}
@@ -257,8 +256,8 @@ func (c changesReceiver) collect(cursor string, max int64) (api.ChangePage, <-ch
 			page.AtEnd = true
 		}
 	}
-	page.Next = epoch + ":" + strconv.FormatInt(advanced, 10)
-	return page, notify, 0
+	page.Next = j.cursorLocked(advanced)
+	return page, 0
 }
 
 func (c changesReceiver) Observe(cursor string, maxChanges, waitMS int64) (api.ChangePage, error) {
@@ -278,37 +277,42 @@ func (c changesReceiver) Observe(cursor string, maxChanges, waitMS int64) (api.C
 		start = j.cursorLocked(j.last)
 		j.mu.Unlock()
 	}
-	page, notify, status := c.collect(start, maxChanges)
-	if status != 0 {
+	var page api.ChangePage
+	var status api.ChangePageOutcome
+	position := start
+	outcome, err := c.journal.gate.Wait(c.wait, time.Duration(waitMS)*time.Millisecond, watch.Probe{
+		Read: func() (bool, error) {
+			page, status = c.collect(position, maxChanges)
+			if status != 0 {
+				return true, nil
+			}
+			position = page.Next
+			return len(page.Changes) > 0 || !page.AtEnd, nil
+		},
+		// Recheck observe authorization before any change is returned.
+		Recheck: func() error {
+			if refused := c.authorization(); refused != "" {
+				return changeRefusal(refused)
+			}
+			return nil
+		},
+	})
+	var refused changeRefusal
+	switch {
+	case errors.As(err, &refused):
+		return refusal(changePageOutcome(string(refused)))
+	case err != nil, outcome == watch.Busy, outcome == watch.Failed:
+		return refusal(api.ChangePageOutcomeUnavailable)
+	case status != 0:
 		return refusal(status)
-	}
-	if len(page.Changes) == 0 && page.AtEnd && waitMS > 0 {
-		select {
-		case c.journal.waiters <- struct{}{}:
-		default:
-			return refusal(api.ChangePageOutcomeUnavailable)
-		}
-		timer := time.NewTimer(time.Duration(waitMS) * time.Millisecond)
-		select {
-		case <-notify:
-		case <-timer.C:
-		case <-c.wait.Done():
-		}
-		timer.Stop()
-		<-c.journal.waiters
-		if c.wait.Err() != nil {
-			return refusal(api.ChangePageOutcomeUnavailable)
-		}
-		if page, _, status = c.collect(page.Next, maxChanges); status != 0 {
-			return refusal(status)
-		}
-	}
-	// Recheck observe authorization before any change is returned.
-	if status := c.authorization(); status != "" {
-		return refusal(changePageOutcome(status))
 	}
 	return page, nil
 }
+
+// changeRefusal carries an authorization word through the shared waiter.
+type changeRefusal string
+
+func (r changeRefusal) Error() string { return "storage: observe " + string(r) }
 
 func (c changesReceiver) List(continuation string, limit int64) (api.ListingPage, error) {
 	refusal := func(outcome api.ListingOutcome) (api.ListingPage, error) {
@@ -347,9 +351,9 @@ func (c changesReceiver) List(continuation string, limit int64) (api.ListingPage
 		id = token
 		j.snapshots[id] = &snapshot{objects: objects, cursor: j.cursorLocked(j.last), scope: c.scope}
 	} else {
-		word := ""
-		var ok bool
-		id, word, ok = strings.Cut(continuation, ":")
+		envelope, ok := (cursorcodec.Codec{Separator: ":"}).Parse(continuation)
+		id = envelope.Epoch
+		word := envelope.Payload
 		n, err := strconv.Atoi(word)
 		if !ok || err != nil || n < 0 || strconv.Itoa(n) != word {
 			j.mu.Unlock()
@@ -386,7 +390,7 @@ func (c changesReceiver) List(continuation string, limit int64) (api.ListingPage
 	}
 	page.Complete = index == len(objects)
 	if !page.Complete {
-		page.Continuation = id + ":" + strconv.Itoa(index)
+		page.Continuation = (cursorcodec.Codec{Separator: ":"}).Encode(cursorcodec.Envelope{Epoch: id, Payload: strconv.Itoa(index)})
 	}
 	if status := c.authorization(); status != "" {
 		return refusal(listingOutcome(status))

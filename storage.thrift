@@ -33,15 +33,15 @@ struct FindResult {
  1: optional Ref reference(omit="absent")
 }(unknown_fields="refuse",doc="Absent reference means no known match; discovery does not hash bytes. Naming conventions supply evidence and consumers still verify content.")
 service Store {
- string Name()
- FindResult Find(1:string digest)
+ string Name()(readonly="true")
+ FindResult Find(1:string digest)(readonly="true")
  Ref Place(1:string digest, 2:i64 size)(doc="Reserve a destination without writing bytes. A read-only provider refuses. The provider chooses its location.")
 }(wire_name="abstraction.storage/store@1",doc="Direct provider interface. No IPC endpoint is supplied; native provider binding handles errors and reference provenance.")
 service Local {
- string Path(1:Ref reference)(doc="Optional explicit local binding projects its own reference onto this machine. Availability of this interface is not implied by Store.")
+ string Path(1:Ref reference)(readonly="true",doc="Optional explicit local binding projects its own reference onto this machine. Availability of this interface is not implied by Store.")
 }(wire_name="abstraction.storage/local@1",doc="Optional direct local-provider extension; never a remote authority grant.")
 service Writable {
- void Commit(1:Ref reference)(doc="Commit already-written bytes under their digest, making a reservation findable. Preserve provider validation and errors.")
+ void Commit(1:Ref reference)(idempotent="true",doc="Commit already-written bytes under their digest, making a reservation findable. Preserve provider validation and errors.")
 }(wire_name="abstraction.storage/writable@1",doc="Optional direct writable-provider extension.")
 const list<string> failure_names = ["read_only", "not_found"]
 

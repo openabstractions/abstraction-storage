@@ -13,7 +13,6 @@ namespace content_detail {
 inline bool digest(const std::string& d){return d.size()==71&&d.compare(0,7,"sha256:")==0&&std::all_of(d.begin()+7,d.end(),[](unsigned char c){return(c>='0'&&c<='9')||(c>='a'&&c<='f');});}
 inline bool resource(const content::Resource& r){return !r.handle.empty()&&r.handle.size()<=128&&r.size>=0&&r.verification=="unverified"&&digest(r.digest);}
 inline void read(const content::ReadResult& result,const content::Resource& r,std::int64_t offset,std::int64_t max_bytes){
- if((result.outcome=="data")!=result.chunk.has_value())throw content::ServiceError("invalid_storage","inconsistent read outcome");
  if(!result.chunk)return;const auto& c=*result.chunk;
  if(c.offset!=offset||c.total!=r.size||c.data.size()>static_cast<std::size_t>(max_bytes)||c.data.size()>static_cast<std::uint64_t>(r.size-offset)||c.eof!=(c.data.size()==static_cast<std::uint64_t>(r.size-offset))||(c.data.empty()&&!c.eof))throw content::ServiceError("invalid_storage","inconsistent chunk");
 }
@@ -30,7 +29,7 @@ public:
  content::OpenResult open(const std::string& digest)const{
   if(!content_detail::digest(digest))throw content::ServiceError("invalid_request","canonical SHA256 required");
   auto transport=make_transport();content::ContentReaderClient<ipc::FrameTransport> client(transport);auto result=client.open(digest);
-  if((result.outcome=="opened")!=result.resource.has_value()||(result.resource&&(!content_detail::resource(*result.resource)||result.resource->digest!=digest)))throw content::ServiceError("invalid_storage","inconsistent open result");return result;
+  if(result.resource&&(!content_detail::resource(*result.resource)||result.resource->digest!=digest))throw content::ServiceError("invalid_storage","inconsistent open result");return result;
  }
  content::ReadResult read(const content::Resource& r,std::int64_t offset,std::int64_t max_bytes)const{
   if(!content_detail::resource(r)||offset<0||offset>r.size||max_bytes<1||max_bytes>65536)throw content::ServiceError("invalid_request","invalid read bounds");
@@ -41,7 +40,7 @@ public:
   auto transport=make_transport();content::ContentReaderClient<ipc::FrameTransport> client(transport);return client.close(r.handle);
  }
 private:
- ipc::FrameTransport make_transport()const{return (deadline_?ipc::FrameTransport(endpoint_,*deadline_,1u<<20):ipc::FrameTransport(endpoint_,5000,1u<<20)).with_cancellation(cancellation_).with_server_expectation(server_);}
+ ipc::FrameTransport make_transport()const{return (deadline_?ipc::FrameTransport(endpoint_,*deadline_,ipc::kDefaultMaxFrame):ipc::FrameTransport(endpoint_,ipc::kDefaultCallBudgetMs,ipc::kDefaultMaxFrame)).with_cancellation(cancellation_).with_server_expectation(server_);}
  std::string endpoint_;std::optional<ipc::Deadline> deadline_;ipc::CancellationToken cancellation_;
  std::optional<ipc::ServerExpectation> server_;
 };
@@ -73,7 +72,7 @@ public:
  }
 private:
  ipc::FrameTransport make_transport(std::int64_t wait_ms)const{
-  auto t=deadline_?ipc::FrameTransport(endpoint_,*deadline_,1u<<20):ipc::FrameTransport(endpoint_,5000+static_cast<unsigned>(wait_ms),1u<<20);
+  auto t=deadline_?ipc::FrameTransport(endpoint_,*deadline_,ipc::kDefaultMaxFrame):ipc::FrameTransport(endpoint_,ipc::kDefaultCallBudgetMs+static_cast<unsigned>(wait_ms),ipc::kDefaultMaxFrame);
   return t.with_cancellation(cancellation_).with_server_expectation(server_);
  }
  std::string endpoint_;std::optional<ipc::Deadline> deadline_;ipc::CancellationToken cancellation_;
@@ -85,7 +84,7 @@ struct WriteOutcome:std::runtime_error{
  WriteOutcome(std::string op,std::string out):std::runtime_error("storage: "+op+" "+out),operation(std::move(op)),outcome(std::move(out)){}
 };
 namespace writer_detail {
-inline constexpr std::int64_t kMaxAppend=65536;
+inline constexpr std::int64_t kMaxAppend=content::kMaxAppendBytes;
 inline bool request(const std::string& r){return r.size()>=16&&r.size()<=128&&std::all_of(r.begin(),r.end(),[](unsigned char c){return(c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='_'||c=='-';});}
 inline bool upload(const content::Upload& u){return !u.handle.empty()&&u.handle.size()<=128&&content_detail::digest(u.digest)&&u.size>=0&&u.received>=0&&u.received<=u.size;}
 }
@@ -106,7 +105,7 @@ public:
   if(!writer_detail::request(request)||!content_detail::digest(digest)||size<0)throw content::ServiceError("invalid_request","invalid write request");
   auto transport=make_transport();content::ContentWriterClient<ipc::FrameTransport> client(transport);auto r=client.begin(request,digest,size);
   const bool stored=r.outcome=="committed"||r.outcome=="present";
-  if((r.outcome=="started")!=r.upload.has_value()||stored!=r.stored.has_value()||r.limit<0)throw content::ServiceError("invalid_storage","inconsistent begin result");
+  if(stored!=r.stored.has_value()||r.limit<0)throw content::ServiceError("invalid_storage","inconsistent begin result");
   if(r.upload&&(!writer_detail::upload(*r.upload)||r.upload->digest!=digest||r.upload->size!=size))throw content::ServiceError("invalid_storage","inconsistent upload");
   if(r.stored&&(r.stored->digest!=digest||(r.outcome=="committed")!=(r.stored->evidence=="hashed")||(r.outcome=="committed"&&r.stored->size!=size)))throw content::ServiceError("invalid_storage","inconsistent stored result");
   return r;
@@ -122,7 +121,7 @@ public:
  content::CommitResult commit(const content::Upload& u)const{
   if(!writer_detail::upload(u))throw content::ServiceError("invalid_request","invalid upload");
   auto transport=make_transport();content::ContentWriterClient<ipc::FrameTransport> client(transport);auto r=client.commit(u.handle);
-  if((r.outcome=="committed")!=r.stored.has_value()||(r.stored&&(r.stored->digest!=u.digest||r.stored->size!=u.size||r.stored->evidence!="hashed"))||(r.outcome!="incomplete"&&r.received!=0)||r.received<0||r.received>u.size)throw content::ServiceError("invalid_storage","inconsistent commit result");
+  if((r.stored&&(r.stored->digest!=u.digest||r.stored->size!=u.size||r.stored->evidence!="hashed"))||(r.outcome!="incomplete"&&r.received!=0)||r.received<0||r.received>u.size)throw content::ServiceError("invalid_storage","inconsistent commit result");
   return r;
  }
  content::AbortResult abort(const content::Upload& u)const{
@@ -144,7 +143,7 @@ public:
   auto committed=commit(u);if(committed.outcome!="committed")throw WriteOutcome("commit",std::string(wire_name(committed.outcome)));return *committed.stored;
  }
 private:
- ipc::FrameTransport make_transport()const{return (deadline_?ipc::FrameTransport(endpoint_,*deadline_,1u<<20):ipc::FrameTransport(endpoint_,5000,1u<<20)).with_cancellation(cancellation_).with_server_expectation(server_);}
+ ipc::FrameTransport make_transport()const{return (deadline_?ipc::FrameTransport(endpoint_,*deadline_,ipc::kDefaultMaxFrame):ipc::FrameTransport(endpoint_,ipc::kDefaultCallBudgetMs,ipc::kDefaultMaxFrame)).with_cancellation(cancellation_).with_server_expectation(server_);}
  std::string endpoint_;std::optional<ipc::Deadline> deadline_;ipc::CancellationToken cancellation_;
  std::optional<ipc::ServerExpectation> server_;
 };

@@ -11,9 +11,11 @@ import (
 	identity "github.com/openabstractions/abstraction-identity"
 	storage "github.com/openabstractions/abstraction-storage/go"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 	"hash"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -22,6 +24,10 @@ const MaxUploads = 16
 const MaxUploadsPerScope = 4
 const MaxRequestRecords = 256
 const MaxAppendBytes = 65536
+
+// Keep the public untyped constant equal to the canonical bound.
+const _ = uint(MaxAppendBytes - api.MaxAppendBytes)
+const _ = uint(api.MaxAppendBytes - MaxAppendBytes)
 
 // possessionPattern names the staging files of uploads that prove bytes the
 // store already holds (STO-W6). Startup removes every leftover one.
@@ -101,12 +107,21 @@ func savedIdentities(err error) error {
 // requestRecord is one identity. handle names its live upload; an empty handle
 // with no stored result is an unfinished identity that Begin may resume anew.
 type requestRecord struct {
-	digest  string
-	size    int64
-	handle  string
-	stored  *api.Stored
-	expires time.Time
+	digest        string
+	size          int64
+	handle        string
+	stored        *api.Stored
+	expires       time.Time
+	native        *nativeOwner
+	publishedFile string
 }
+
+func (r *requestRecord) heldArchiveReceipt(request string) bool {
+	return r.native != nil && validArchiveWriteRequest(request) && r.stored != nil && r.stored.Evidence == api.EvidenceHashed &&
+		r.publishedFile != ""
+}
+
+var archiveStagedKey = nativeArchiveStagedKey
 
 type writers struct {
 	mu          sync.Mutex
@@ -120,6 +135,7 @@ type writers struct {
 	recordPath  string
 	recordBase  casapi.Value
 	closed      bool
+	fenced      bool
 	now         func() time.Time
 	// onCommitted is called after a successful publish, outside the writer
 	// mutex. It is set before Serve and never changed afterwards.
@@ -189,7 +205,8 @@ func (w *writers) sweep() {
 	}
 	changed := false
 	for key, rec := range w.records {
-		if (rec.stored != nil || rec.handle == "") && !now.Before(rec.expires) {
+		_, request, _ := strings.Cut(key, "\x00")
+		if !rec.heldArchiveReceipt(request) && (rec.stored != nil || rec.handle == "") && !now.Before(rec.expires) {
 			delete(w.records, key)
 			changed = true
 		}
@@ -236,10 +253,34 @@ type writeReceiver struct {
 	ctx     context.Context
 }
 
+type archiveWrite struct {
+	request, digest string
+	size            int64
+	check           func(context.Context, WriteCall) error
+}
+type archiveWriteKey struct{}
+
+func archiveWriteOf(ctx context.Context) *archiveWrite {
+	admission, _ := ctx.Value(archiveWriteKey{}).(*archiveWrite)
+	return admission
+}
+
+func (c writeReceiver) writePolicy(ctx context.Context, peer *identity.Peer, digest string) error {
+	admission := archiveWriteOf(ctx)
+	if admission == nil {
+		return c.writers.policy(ctx, peer, digest)
+	}
+	call, ok := WriteCallFrom(ctx)
+	if !ok || digest != admission.digest || call.Size != admission.size {
+		return errors.New("storage: archive placement differs from its admission")
+	}
+	return admission.check(ctx, call)
+}
+
 // authorization decides one writer call; the policy reads call from its
 // context (STO-W11).
 func (c writeReceiver) authorization(digest string, call WriteCall) string {
-	return decide(WithWriteCall(c.ctx, call), c.scope, c.writers.policy, c.peer, digest)
+	return decide(WithWriteCall(c.ctx, call), c.scope, c.writePolicy, c.peer, digest)
 }
 
 // beginAuthorization decides Begin. A policy answering ErrRequireBytes
@@ -252,7 +293,7 @@ func (c writeReceiver) beginAuthorization(digest string, size int64) (string, bo
 	if ctx.Err() != nil {
 		return "unavailable", false
 	}
-	err := c.writers.policy(ctx, c.peer, digest)
+	err := c.writePolicy(ctx, c.peer, digest)
 	if errors.Is(err, ErrRequireBytes) && ctx.Err() == nil {
 		return "", true
 	}
@@ -265,24 +306,42 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 		return api.BeginResult{Outcome: s, Limit: w.limit}, nil
 	}
 	unavailable := api.BeginResult{Outcome: api.BeginOutcomeUnavailable}
-	if !validRequest(request) || !validDigest(digest) || size < 0 {
+	admission := archiveWriteOf(c.ctx)
+	if !validRequest(request) || !contentdigest.Valid(digest) || size < 0 ||
+		admission == nil && validArchiveWriteRequest(request) ||
+		admission != nil && (request != admission.request || digest != admission.digest || size != admission.size) {
 		return api.BeginResult{Outcome: api.BeginOutcomeInvalid}, nil
 	}
 	status, requireBytes := c.beginAuthorization(digest, size)
 	if status != "" {
 		return api.BeginResult{Outcome: beginOutcome(status)}, nil
 	}
-	if size > w.limit {
+	if size > w.limit && admission == nil {
 		return result(api.BeginOutcomeTooLarge)
 	}
 	w.sweep()
 	key := c.scope + "\x00" + request
 	w.mu.Lock()
-	if w.closed {
+	if w.closed || !w.currentLocked() {
 		w.mu.Unlock()
 		return unavailable, nil
 	}
 	rec := w.records[key]
+	if binding := nativeBindingOf(c.ctx); binding != nil {
+		if c.scope != binding.owner.scope() || rec != nil && (rec.native == nil || !rec.native.sameProgram(binding.owner)) {
+			w.mu.Unlock()
+			return unavailable, nil
+		}
+		legacyKey := binding.legacy + "\x00" + request
+		legacy := w.records[legacyKey]
+		if rec != nil && legacy != nil {
+			w.mu.Unlock()
+			return result(api.BeginOutcomeConflict)
+		}
+		if legacy != nil {
+			key, rec = legacyKey, legacy
+		}
+	}
 	if rec != nil {
 		if rec.digest != digest || rec.size != size {
 			w.mu.Unlock()
@@ -337,7 +396,7 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 	}
 	perScope := 0
 	for _, u := range w.uploads {
-		if u.scope == c.scope {
+		if ownsScope(c.ctx, c.scope, u.scope) {
 			perScope++
 		}
 	}
@@ -350,11 +409,19 @@ func (c writeReceiver) Begin(request, digest string, size int64) (api.BeginResul
 		w.mu.Unlock()
 		return unavailable, nil
 	}
-	u := &upload{handle: hex.EncodeToString(nonce[:]), key: key, digest: digest, scope: c.scope, size: size, requireBytes: requireBytes}
+	retainedScope := c.scope
+	if rec != nil {
+		retainedScope, _, _ = strings.Cut(key, "\x00")
+	}
+	u := &upload{handle: hex.EncodeToString(nonce[:]), key: key, digest: digest, scope: retainedScope, size: size, requireBytes: requireBytes}
 	w.uploads[u.handle], w.digests[digest] = u, u
 	created := rec == nil
 	if created {
 		rec = &requestRecord{digest: digest, size: size}
+		if binding := nativeBindingOf(c.ctx); binding != nil {
+			captured := binding.owner
+			rec.native = &captured
+		}
 		w.records[key] = rec
 	}
 	previousExpiry := rec.expires
@@ -468,7 +535,7 @@ func (c writeReceiver) find(handle string) (*upload, string) {
 	if u == nil || !u.ready {
 		return nil, "gap"
 	}
-	if c.scope == "" || u.scope != c.scope {
+	if !ownsScope(c.ctx, c.scope, u.scope) {
 		return nil, "forbidden"
 	}
 	return u, ""
@@ -478,7 +545,7 @@ func (c writeReceiver) Append(handle string, offset int64, data []byte) (api.App
 	result := func(s api.AppendOutcome, received int64) (api.AppendResult, error) {
 		return api.AppendResult{Outcome: s, Received: received}, nil
 	}
-	if offset < 0 || len(data) < 1 || len(data) > MaxAppendBytes || len(handle) > 128 {
+	if offset < 0 || len(data) < 1 || len(data) > int(api.MaxAppendBytes) || len(handle) > 128 {
 		return result(api.AppendOutcomeInvalid, 0)
 	}
 	if c.scope == "" {
@@ -582,7 +649,7 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 		w.failed(errors.Join(cleanup, saveErr))
 		return result(commitOutcome(outcome))
 	}
-	if "sha256:"+hex.EncodeToString(u.sum.Sum(nil)) != u.digest {
+	if contentdigest.Hex(u.sum.Sum(nil)) != u.digest {
 		return drop("mismatch", true)
 	}
 	// The verified bytes are decided once more before anything is recorded or
@@ -597,6 +664,16 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 	}
 	if e := u.file.Sync(); e != nil {
 		return drop("unavailable", false)
+	}
+	var publishedFile string
+	if archiveWriteOf(c.ctx) != nil {
+		// Publication moves this staging file within the ContentStore.
+		key, err := archiveStagedKey(c.ctx, u.file)
+		if err != nil || key == "" {
+			failed, cleanup := drop("unavailable", true)
+			return failed, errors.Join(cleanup, errors.New("storage: archive staging has no persistent native file key"), err)
+		}
+		publishedFile = key
 	}
 	if e := u.file.Close(); e != nil {
 		u.file = nil
@@ -614,9 +691,9 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 		return drop("unavailable", false)
 	}
 	previous := rec.expires
-	rec.stored, rec.expires = &stored, w.now().Add(RequestRetention)
+	rec.stored, rec.expires, rec.publishedFile = &stored, w.now().Add(RequestRetention), publishedFile
 	if err := w.saveLocked(); err != nil {
-		rec.stored, rec.expires = nil, previous
+		rec.stored, rec.expires, rec.publishedFile = nil, previous, ""
 		w.mu.Unlock()
 		return drop("unavailable", false)
 	}
@@ -639,7 +716,7 @@ func (c writeReceiver) Commit(handle string) (api.CommitResult, error) {
 		w.mu.Lock()
 		var saveErr error
 		if w.records[u.key] == rec && rec.stored == &stored {
-			rec.stored, rec.expires = nil, previous
+			rec.stored, rec.expires, rec.publishedFile = nil, previous, ""
 			if !w.closed {
 				saveErr = savedIdentities(w.saveLocked())
 			}

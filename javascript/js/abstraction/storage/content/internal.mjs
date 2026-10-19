@@ -39,46 +39,14 @@ function strs(out, v, depth) {
 
 const isWs = (c) => c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 
+// raw writes an opaque value's bytes as they are ([DEF-A3]).
 function raw(out, s, depth) {
   const b = typeof s === "string" ? ENC.encode(s) : s;
-  let i = 0;
-  while (i < b.length) {
-    const c = b[i];
-    if (isWs(c)) { i++; continue; }
-    if (c === 0x22) {
-      let j = i + 1;
-      while (j < b.length) {
-        if (b[j] === 0x5c) { j += 2; continue; }
-        if (b[j] === 0x22) { j++; break; }
-        j++;
-      }
-      for (let k = i; k < j; k++) out.byte(b[k]);
-      i = j;
-    } else if (c === 0x7b || c === 0x5b) {
-      out.byte(c);
-      i++;
-      let j = i;
-      while (j < b.length && isWs(b[j])) j++;
-      if (j < b.length && (b[j] === 0x7d || b[j] === 0x5d)) { out.byte(b[j]); i = j + 1; }
-      else { depth++; out.byte(0x0a); pad(out, depth); }
-    } else if (c === 0x7d || c === 0x5d) {
-      depth--;
-      out.byte(0x0a);
-      pad(out, depth);
-      out.byte(c);
-      i++;
-    } else if (c === 0x2c) {
-      out.ascii(",\n");
-      pad(out, depth);
-      i++;
-    } else if (c === 0x3a) {
-      out.ascii(": ");
-      i++;
-    } else {
-      out.byte(c);
-      i++;
-    }
-  }
+  // Whitespace around the value is not part of it.
+  let i = 0, j = b.length;
+  while (i < j && isWs(b[i])) i++;
+  while (j > i && isWs(b[j - 1])) j--;
+  for (let k = i; k < j; k++) out.byte(b[k]);
 }
 
 // A JavaScript string sorts by UTF-16 code unit, which puts U+1D11E before
@@ -405,6 +373,8 @@ export const ServiceErrorCode = Object.freeze({
   CallerUnavailable: "caller_unavailable",
   IdentityRequired: "identity_required",
 });
+
+export const maxAppendBytes = 65536;
 
 export const inventorySourceErrorCodes = ["caller_unavailable", "identity_required"];
 
@@ -2940,6 +2910,7 @@ export function newListingPage() {
   return { outcome: "", objects: [], continuation: "", complete: false, cursor: "" };
 }
 
+// [Object](https://openabstractions.github.io/reference.html#concept-storage.content-object):
 // One stored object, by stat only. locator is opaque provider binding data, as
 // storage Ref.locator; applications never treat it as a path or as authority.
 // partial marks an interrupted transfer the store spells as such. digest is
@@ -2958,6 +2929,7 @@ export function newEntry() {
   return { role: "", digest: "", size: 0n, mediaType: "", evidence: "", locator: "", manifest: "", annotations: {} };
 }
 
+// [Name](https://openabstractions.github.io/reference.html#concept-storage.manifest-name):
 // A name a program uses for this manifest, in that program's own vocabulary.
 // scheme is an open catalogue; seeds ollama, hf, lmstudio, comfyui, flm, jan,
 // oci, stabilitymatrix, pinokio, swarmui.
@@ -2990,13 +2962,14 @@ export function newManifest() {
 // established it; no domain inherits another's proofs. program is the holder's
 // name in the holder vocabulary (ollama, lemonade, comfyui). instance
 // distinguishes installations of one program: for declared holds the bound
-// peer's normalized executable identity as rights Subject.program spells it;
-// for observed holds the source's opaque identity for that installation (a
-// Stability Matrix package name, a Pinokio app, an install locator). For
-// declared holds account and instance are the receiving boundary's bound peer,
-// asserted by the service; for observed holds they are the source's words and
-// established_by is the source program the service bound. Never a
-// caller-supplied claim.
+// peer's normalized executable identity as [rights
+// Subject.program](https://openabstractions.github.io/reference.html#concept-rights.subject)
+// spells it; for observed holds the source's opaque identity for that
+// installation (a Stability Matrix package name, a Pinokio app, an install
+// locator). For declared holds account and instance are the receiving
+// boundary's bound peer, asserted by the service; for observed holds they are
+// the source's words and established_by is the source program the service
+// bound. Never a caller-supplied claim.
 export function newHolder() {
   return { account: "", program: "", instance: "", establishedBy: "", domain: "" };
 }
@@ -7091,12 +7064,76 @@ export function decode(data) {
   return v;
 }
 
+const JSON_RECORDS = Object.freeze({
+  Resource: [writeResource, readResource],
+  OpenResult: [writeOpenResult, readOpenResult],
+  Chunk: [writeChunk, readChunk],
+  ReadResult: [writeReadResult, readReadResult],
+  CloseResult: [writeCloseResult, readCloseResult],
+  Upload: [writeUpload, readUpload],
+  Stored: [writeStored, readStored],
+  BeginResult: [writeBeginResult, readBeginResult],
+  AppendResult: [writeAppendResult, readAppendResult],
+  CommitResult: [writeCommitResult, readCommitResult],
+  AbortResult: [writeAbortResult, readAbortResult],
+  Change: [writeChange, readChange],
+  ChangePage: [writeChangePage, readChangePage],
+  ListedObject: [writeListedObject, readListedObject],
+  ListingPage: [writeListingPage, readListingPage],
+  Object: [writeObject, readObject],
+  Entry: [writeEntry, readEntry],
+  Name: [writeName, readName],
+  Manifest: [writeManifest, readManifest],
+  Holder: [writeHolder, readHolder],
+  Basis: [writeBasis, readBasis],
+  Hold: [writeHold, readHold],
+  Dangling: [writeDangling, readDangling],
+  StoreError: [writeStoreError, readStoreError],
+  Store: [writeStore, readStore],
+  HoldResult: [writeHoldResult, readHoldResult],
+  ReleaseResult: [writeReleaseResult, readReleaseResult],
+  RenewResult: [writeRenewResult, readRenewResult],
+  DescribeResult: [writeDescribeResult, readDescribeResult],
+  PublishResult: [writePublishResult, readPublishResult],
+  ManifestHolders: [writeManifestHolders, readManifestHolders],
+  ObjectHolders: [writeObjectHolders, readObjectHolders],
+  InventoryPage: [writeInventoryPage, readInventoryPage],
+  RemoveResult: [writeRemoveResult, readRemoveResult],
+  SourceDescription: [writeSourceDescription, readSourceDescription],
+  SourceChange: [writeSourceChange, readSourceChange],
+  SourcePage: [writeSourcePage, readSourcePage],
+});
+
+// toJson writes one record, named by kind, as JSON laid out as this module's
+// documents are and without the document terminator.
+export function toJson(kind, value) {
+  const codec = Object.hasOwn(JSON_RECORDS, kind) ? JSON_RECORDS[kind] : undefined;
+  if (codec === undefined) throw new TypeError("toJson takes a record name of this module, not " + String(kind));
+  const out = new Out();
+  codec[0](out, value, 0);
+  return out.bytes();
+}
+
+// fromJson reads one record, named by kind, from data; a refused input throws Refusal.
+export function fromJson(kind, data) {
+  const codec = Object.hasOwn(JSON_RECORDS, kind) ? JSON_RECORDS[kind] : undefined;
+  if (codec === undefined) throw new TypeError("fromJson takes a record name of this module, not " + String(kind));
+  const r = new Reader(data);
+  r.ws();
+  const v = codec[1](r);
+  r.ws();
+  if (r.pos < r.buf.length) throw r.refuse("trailing_bytes");
+  return v;
+}
+
 // refusals is in the order two of them are chosen between.
 const refusals = ["malformed", "bad_string", "number_spelling", "wrong_type", "bad_timestamp", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "bad_binary", "bad_enum", "trailing_bytes"];
 
 function refusalRank(word) {
   return refusals.indexOf(word);
 }
+
+function _serviceClearDecodedBinary(value) { value.fill(0); }
 
 export class DispatchError extends Error {
   constructor(code) { super(code); this.name = "DispatchError"; this.code = code; }
@@ -7274,6 +7311,7 @@ export class ContentReaderClient {
     const _request = _serviceRequest("abstraction.storage/content-reader@1", "Open", _payload);
     const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.storage/content-reader@1", "Open");
     const _result = _serviceDecode(readOAContentReaderOpenResult, _reply, 1);
+    if ((_result.value.outcome === "opened") !== (_result.value.resource !== undefined && _result.value.resource !== null)) throw new ServiceError("invalid_result", "");
     return _result.value;
   }
 
@@ -7288,6 +7326,11 @@ export class ContentReaderClient {
     const _request = _serviceRequest("abstraction.storage/content-reader@1", "Read", _payload);
     const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.storage/content-reader@1", "Read");
     const _result = _serviceDecode(readOAContentReaderReadResult, _reply, 1);
+    if ((_result.value.outcome === "data") !== (_result.value.chunk !== undefined && _result.value.chunk !== null)){
+if(_result.value.chunk!==undefined&&_result.value.chunk!==null){
+_serviceClearDecodedBinary(_result.value.chunk.data);
+}
+throw new ServiceError("invalid_result", "");}
     return _result.value;
   }
 
@@ -7319,6 +7362,7 @@ export class ContentWriterClient {
     const _request = _serviceRequest("abstraction.storage/content-writer@1", "Begin", _payload);
     const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.storage/content-writer@1", "Begin");
     const _result = _serviceDecode(readOAContentWriterBeginResult, _reply, 1);
+    if ((_result.value.outcome === "started") !== (_result.value.upload !== undefined && _result.value.upload !== null)) throw new ServiceError("invalid_result", "");
     return _result.value;
   }
 
@@ -7345,6 +7389,7 @@ export class ContentWriterClient {
     const _request = _serviceRequest("abstraction.storage/content-writer@1", "Commit", _payload);
     const _reply = _serviceResponse(await this._transport.exchangeFrame(_request), "abstraction.storage/content-writer@1", "Commit");
     const _result = _serviceDecode(readOAContentWriterCommitResult, _reply, 1);
+    if ((_result.value.outcome === "committed") !== (_result.value.stored !== undefined && _result.value.stored !== null)) throw new ServiceError("invalid_result", "");
     return _result.value;
   }
 

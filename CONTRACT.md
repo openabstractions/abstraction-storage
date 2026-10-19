@@ -1,9 +1,16 @@
 # abstraction.storage contract
 
+Remote profile: the current service methods retain `local` (explicit or
+default); the general paired listener does not offer this capability. Retained
+capability-specific delegation keeps its existing contract and is separate
+from that listener. Held by: `idl/gen/service_test.go`
+(`TestDispatcherTableCarriesRemoteProfile`) and `serve/runtime_remote_test.go`
+(`TestRemoteRuntimeDescribeUsesLiveGrantAndExplicitServices`).
+
 Binds: `content.thrift`
 
-`content.thrift` defines `abstraction.storage/content-reader@1`,
-`content-writer@1`, `content-changes@1` and `inventory@1`: read, write,
+`content.thrift` defines [`abstraction.storage/content-reader@1`](https://openabstractions.github.io/reference.html#concept-storage.content-reader-service),
+[`content-writer@1`](https://openabstractions.github.io/reference.html#concept-storage.content-writer-service), `content-changes@1` and `inventory@1`: read, write,
 observe and compose shared content by its canonical digest, while the
 service keeps backend paths and file permissions private. It also defines
 `inventory-source@1`, `manifests@1`, `holds@1` and `content-remover@1`,
@@ -15,9 +22,11 @@ walkthrough: setup, a worked read, write and observe.
 
 ## Reading this page
 
+The conventions every OA contract carries are stated once in [CONVENTIONS.md](https://github.com/openabstractions/abstractions/blob/main/idl/CONVENTIONS.md); a rule here that applies one cites its `CONV-` id.
+
 The rule ids below, such as `STO-R1`, are what tests and refusals cite.
 Rules are grouped by the service they belong to: reader, writer, changes,
-inventory, then retention.
+inventory, then retention and locations.
 
 | letter | topic |
 |---|---|
@@ -26,6 +35,8 @@ inventory, then retention.
 | O | content-changes@1 (observation) |
 | I | inventory@1 |
 | T | retention (`research/storage-classes/DECISION.md` §8) |
+| L | locations: where OA keeps files on a device (the `layout` package) |
+| D | content-transfer@1: fill, proof, seal and the mapping kind (not built) |
 
 `A` (admission) and `E` (error and outcome) are reserved with one meaning in
 every contract (S12) and are not separately declared here: every rule below
@@ -50,7 +61,7 @@ version, so this page carries no prose-to-wire table.
   MUST require an explicit content policy; the service MUST NOT discover
   owner stores by itself.
 - **[STO-R3] Subject from native evidence.** The receiving service MUST
-  obtain native Program evidence and MUST require the service account. The
+  obtain native [Program](https://openabstractions.github.io/reference.html#concept-identity.listener-program-need) evidence and MUST require the service account. The
   account and observed executable path form the subject the policy decides
   on. This identity check MUST NOT by itself grant any permission to stored
   bytes.
@@ -101,16 +112,24 @@ version, so this page carries no prose-to-wire table.
 - **[STO-R13] Caller-retained handles.** A handle is a caller-retained
   value; the client MUST maintain no private path cache.
 
-Native `Store`/`Local` lack context parameters and remain trusted bounded
+Native Go `Store`/`Local` lack context parameters and remain trusted bounded
 provider callbacks: this wrapper cannot forcibly cancel a blocking custom
-native provider or filesystem operation. C++ service packaging is opt-in
-(`ABSTRACTION_STORAGE_BUILD_SERVICE=ON`,
-`ABSTRACTION_STORAGE_BUILD_LEGACY=OFF` for a service-only prefix); its
+native provider or filesystem operation. C++ packaging defaults to the service
+client (`ABSTRACTION_STORAGE_BUILD_SERVICE=ON`,
+`ABSTRACTION_STORAGE_BUILD_LEGACY=OFF`); its
 `abstraction_storage_content` package exports `abstraction::storage_content`
-(protocol) and `abstraction::storage_client` (shared IPC), beside the native
-package's own independent build.
+(protocol) and `abstraction::storage_client` (shared IPC). C++ package 0.2.0
+retires the separate direct provider, header, target and native package at an
+explicit source-breaking minor boundary from 0.1.0. The CMake input
+`ABSTRACTION_STORAGE_BUILD_LEGACY=ON` is refused with the service-client migration
+direction; explicit OFF input is accepted. The versioned content package uses
+SameMinorVersion compatibility.
+Old immutable sources/releases retain their API. Service failure remains a
+service/transport refusal, with content state held by its Go owner.
 
-## Writer
+<a id="writer"></a>
+
+## [ContentWriter](https://openabstractions.github.io/reference.html#concept-storage.content-writer-service)
 
 - **[STO-W1] Class at commit.** A committed object is `cache` until a hold
   names it; `Begin` MUST NOT carry a class. Lands with `holds@1` (see
@@ -140,7 +159,8 @@ package's own independent build.
   MUST report `evidence=hashed`.
 - **[STO-W6] Identity resumes a live or committed upload.** A request
   identity is 16..128 characters from `A-Z a-z 0-9 _ -`, bound to the
-  subject: the account and observed program. Repeating `Begin` with the
+  subject: the account and canonical native Program established by receiving
+  `SubjectOf`. The observed executable remains an observation. Repeating `Begin` with the
   same digest and size MUST resume the live upload at its received count,
   or MUST return the committed result. A different digest or size MUST
   return `conflict` with zero provider effects. Another live upload of the
@@ -172,6 +192,22 @@ package's own independent build.
   writer; a record file changed by another writer MUST fence this lifetime,
   so a later identity change returns `unavailable`. A malformed or oversized
   record file MUST refuse writer startup.
+  New native records use the private `abstraction.storage/writer-records@2`
+  profile and capture account kind, account, canonical Program and observed
+  executable. Under the existing writer transaction, admission MUST check
+  both the canonical request namespace and the exact current executable's
+  earlier namespace before staging or publication. A matching earlier request
+  retains its original stored value, upload and record identity. A changed intent
+  or ambiguous distinct retained records MUST refuse before provider effects.
+  Earlier `@1` records MUST remain readable under their original closed shape;
+  they gain no inferred canonical provenance and MUST NOT transfer across
+  package versions. New metadata counts toward the existing record-file bound.
+  A native receiving site without canonical provenance MUST refuse instead of
+  falling back to earlier admission. Trusted subject-less and remote
+  composition retain their existing scope. Read and upload handles retain the
+  selected original owner; incompatible old listing/inventory continuations
+  MUST refuse explicitly rather than be reinterpreted. Epoch change cursors
+  retain their existing per-call authorization and filtering.
 - **[STO-W9] Startup reconciles unfinished uploads.** Startup MUST restore
   unexpired identities and MUST remove the provider reservation of every
   unfinished identity whose digest is not findable. `Place` MUST choose a
@@ -232,8 +268,9 @@ validate result invariants; `Writer.Write` resumes by identity, follows
 aborting. C++ `storage::Writer` provides the same calls in snake_case and
 throws `WriteOutcome` from `write`. Facade resolution uses
 `Machine.ResolveStorageWriter` and C++ `facade::resolve_storage_writer`.
-Python, Rust and JavaScript have generated writer codecs only; their writer
-clients are planned and unproven.
+Python `Writer` resolves through `Machine().resolve_storage_writer` and Rust
+through `resolve_storage_writer`; JavaScript has the generated writer codec
+and protocol client only.
 
 ## Changes
 
@@ -283,9 +320,14 @@ clients are planned and unproven.
   unverified digest naming key and grants no access; the caller MUST still
   `Open` and verify content.
 
-Go `client.Changes` (`Observe`, `List`, `Snapshot`) and C++
-`storage::Changes` validate page shapes. Facade resolution uses
-`Machine.ResolveStorageChanges` and C++ `facade::resolve_storage_changes`.
+Go `client.Changes` (`Observe`, `List`, `Snapshot`), C++
+`storage::Changes` and Python `Changes` validate page shapes. Facade
+resolution uses `Machine.ResolveStorageChanges`, C++
+`facade::resolve_storage_changes`, Python
+`Machine().resolve_storage_changes` and Rust `resolve_storage_changes`. A host
+serves `content-changes@1` when it calls `EnableChanges`; the
+`openabstractions` runtime does not, and resolving it against the runtime
+finds no server.
 
 ## Inventory
 
@@ -328,7 +370,18 @@ Go `client.Changes` (`Observe`, `List`, `Snapshot`) and C++
   a designated source would report an absence it cannot see. A store the
   source could not read entirely is different: its errors travel on its own
   `Store` record and the page still carries everything else, as the source
-  profile states.
+  profile states. The runtime's own composition for its model catalogue and
+  model host (`Compose`, never served to an application) reads every source
+  at once and treats a source that does not answer the same way: each store
+  the source was accepted for carries the error "the inventory source did
+  not answer in time", the composition names the source incomplete, and the
+  other sources' records stand. It refuses only when no source answers. A
+  source that answers from an earlier observation while a newer one runs
+  puts the error "answered from an earlier observation, taken at <RFC 3339
+  time>" on each store it reports (`storage.StaleObservationError`). The
+  runtime keeps what it last knew of a store unread either way for at most
+  ten refreshes in a row, five minutes, then counts the store as read and
+  empty until its source reads it again.
 - **[STO-I7] Holders and Find observe live.** `cursor` is the content-changes
   cursor the composition was frozen at, empty when the host serves no
   change journal. `Holders` MUST re-read one target through each source's
@@ -348,8 +401,9 @@ Go `client.Changes` (`Observe`, `List`, `Snapshot`) and C++
   do not identify a store. The frozen continuation MUST bind both caller and
   store. The global `List` behavior is unchanged.
 
-Cross-account content grants, public release pins, remote transports and
-macOS native Program proof remain separate obligations. Generated inference
+Cross-account content grants, public release pins and remote transports
+remain separate obligations. Current macOS source supplies Program proof
+over XPC; no macOS transcript records it yet. Generated inference
 output uses bounded, original-subject grants on `output:speech`,
 `output:live`, `output:image` and `output:video` under both
 `abstraction.storage/content.write` and `abstraction.storage/content.read`.
@@ -403,10 +457,283 @@ S12 in the same commit that adds these ids.
   the runtime's own store serves none. A request that starts after the
   decision may read the object as `not_found`; the application uploads it
   again. Until the collector exists, the runtime looks once a minute.
+- **[STO-T8] Inventory class follows holds.** For retention presentation,
+  an inventory item's hold with purpose `cache` maps to `cache`; another
+  hold with lifetime `lease` maps to `tmp`; every other hold maps to `data`.
+  The strongest hold wins, in order `data`, `tmp`, `cache`. Purpose remains
+  an open catalogue: an unnamed purpose maps by its lifetime. An item with
+  no holds is `cache` only under STO-T4's content-reference conditions;
+  `Inventory.Unheld` supplies the grace-checked cleanup candidates.
+  Classification supplies no removal authority and changes no hold lifetime.
+  Logging owns the `logs` class and its retention. A Panel using this
+  inventory reports the content store and logs; working folders and staging
+  outside the store remain under their owning module's collection rules.
 
 `abstraction-logging/CONTRACT.md` `LOG-S14`, `abstraction-config/CONTRACT.md`
 `CFG-R4` and `CFG-S2`, and `abstraction-download/CONTRACT.md` `DL-R37`
 complete this design outside this contract's own module.
+
+## Locations
+
+The owner decided where OA keeps files in sto-r2 (0.8.0 plan theme T9,
+2026-10-19).
+Subject letter `L` is added to S12 in the same commit that adds these ids.
+The Go package `layout` in this module implements the section;
+[`testdata/locations`](testdata/locations/README.md) holds a scenario per
+rule for any implementation.
+
+A root is named by its **location** and its class. The locations are
+`machine` (one per device), `user` (one per account) and `isolated` (one
+runtime started with an explicit root: `--state-dir`, `--isolated`, a test,
+a container). The classes are STO-T1's four, `data`, `cache`, `tmp` and
+`logs`, and runtime state is `data`. Four record kinds have folders of their
+own: `config` (the `config` row), `secret` (the credentials in
+`runtime-v1`), `endpoint` (the engine sockets row; a Windows named pipe has
+no folder) and `component` (`engines`). The `config` module's `process` location is the environment
+layer of settings precedence and has no folder. An application is a key inside OA's
+stores and owns no folder in OA's roots; its own files stay in folders its
+installer owns. An account has one data root under any number of
+installations: the runtime reads the declarations of the installation that
+started it.
+
+Every OA folder is named `openabstractions`. Kinds whose contract names a
+path-length limit live under the short root `oa` on Windows and in an
+isolated root; a macOS or Linux user location has no short root. Installer-owned names
+(Program Files, the registry, the Apps list) keep `OpenAbstractions`.
+
+| root | Windows | macOS | Linux |
+|---|---|---|---|
+| `D` data | `%LOCALAPPDATA%\openabstractions` | `~/Library/Application Support/openabstractions` | `$XDG_DATA_HOME/openabstractions` |
+| runtime state | `D\runtime-v1` | `D/runtime-v1` | `D/runtime-v1` |
+| `config` | `D\config` | `D/config` | `$XDG_CONFIG_HOME/openabstractions` |
+| settings file | `<config>\config.json` | `<config>/config.json` | `<config>/config.json` |
+| cache | `D\cache` | `~/Library/Caches/openabstractions` | `$XDG_CACHE_HOME/openabstractions` |
+| logs | `D\logs` | `~/Library/Logs/openabstractions` | `$XDG_STATE_HOME/log/openabstractions` |
+| tmp | `%TEMP%\openabstractions` | `$TMPDIR/openabstractions` | `$TMPDIR/openabstractions-<uid>`, else `/var/tmp/openabstractions-<uid>` |
+| short | `%LOCALAPPDATA%\oa` | none | none |
+| engine sockets | `%LOCALAPPDATA%\oa\s` | `$TMPDIR/oa`, else `/tmp/oa-<uid>` when `$TMPDIR` is unset or not owner-only | `$XDG_RUNTIME_DIR/oa`, else `/tmp/oa-<uid>` when `$XDG_RUNTIME_DIR` is unset or not owner-only |
+
+Windows reads `FOLDERID_LocalAppData` and `FOLDERID_ProgramData` through the
+process token after the profile-view probe, and tmp from `GetTempPath2`,
+which reads `TMP`, `TEMP` and `USERPROFILE`. `layout` reads none of the
+`LOCALAPPDATA`, `APPDATA` and `ProgramData` variables itself. The
+profile-view probe it runs (facade's `bootstrap.CurrentProfileView`) still
+creates its probe file in `%LOCALAPPDATA%` as the variable names it, so a
+redirected variable sends the probe to another folder; 0.8.0 plan ST-2
+part 1 moves the probe to the known folder. A known folder or a temporary
+folder that cannot be read, or is not absolute, refuses its location with
+`no_profile_folder`; no root of that location is returned. On Windows an absolute path begins with a drive
+letter, a colon and a separator, or with `\\` (a UNC path); `\x` and `C:x`
+are relative.
+
+macOS and Linux read `$HOME` and the XDG Base Directory variables. The user
+location there needs an absolute `$HOME`, whatever the XDG variables hold;
+the machine location reads no `$HOME`. An XDG variable, `$TMPDIR` or
+`$XDG_RUNTIME_DIR` that is empty or relative counts as unset: an XDG
+variable then takes the specification's default (`~/.local/share`,
+`~/.config`, `~/.cache`, `~/.local/state`), and tmp and the engine socket
+root take their fallbacks. On macOS without an absolute `$TMPDIR`, tmp is
+`/var/tmp/openabstractions-<uid>` and the engine socket root
+`/tmp/oa-<uid>`. The `user` location reads these variables only; the
+owner-only test of a `$TMPDIR` or `$XDG_RUNTIME_DIR` folder (`STO-L9`) is
+made when the folder is created.
+
+Every root and every path `layout` returns is cleaned lexically: a doubled
+or trailing separator, `.` and `..` are removed. Classifying a path names
+the longest root its cleaned spelling begins with (`data`, `runtime`,
+`config`, `cache`, `logs`, `tmp`, `short` or `sockets`; a child of `D` is
+`data`), or none for a relative path. It compares spellings exactly, with no
+case folded: whether an existing file lies in a root is asked of the file
+system (identity's `Within`, `VISION.md` L623).
+
+Children of `D`: `runtime-v1` (rights, asks, jobs, the content store,
+credentials and the other runtime records), `provider-data/<provider>`,
+`engines/<provider>/<version>`, `models/<set>`, `setup` (Setup journals and
+receipts), `mcp-gateway` (gateway job handles), `install` (macOS and Linux
+installer bookkeeping) and `upgrade-v1` (Windows, a frozen protocol path).
+`runtime-v1` keeps its 0.4.0 location on every platform, and the CRED-B1
+marker and every CAS `.lock` stay with their files.
+
+Path-bound kinds:
+
+| kind | name | Windows, and an isolated root | macOS and Linux user location | limit |
+|---|---|---|---|---|
+| engine sockets | `s` | `<short>/s` | the engine sockets root | the socket path `<folder>/<8 hex digits>/e.sock` at most 107 bytes (`sun_path`), every platform |
+| engines a GPU library opens without long paths | `e` | `<short>/e/<provider>/<version>` | `D/engines/<provider>/<version>` | the folder at most 87 UTF-16 code units, on Windows |
+| those providers' state | `p` | `<short>/p/<provider>` | `D/provider-data/<provider>` | the same |
+| Setup's model stages for those engines | `m` | `<short>/m/...` | `D/models/...` | the same |
+
+A path-bound path is its kind's folder joined with the caller's elements
+(`<provider>`, `<version>`, ...), each one folder name. An element that is
+empty or made only of dots, or holds a `/` (on Windows also `\` or `:`), is
+refused with `outside_root`. The limit measures that path, for engine sockets with
+the 16 bytes of `/<8 hex digits>/e.sock` added. A path at the limit fits; a
+longer one is refused with `path_too_long` (`STO-L6`). Only a path-bound
+path is measured: resolving a location's roots refuses no long root.
+
+An isolated root `S` is the runtime state folder and the data root, and
+every other root is a reserved child: `S/config` (settings file
+`S/config/config.json`), `S/cache`, `S/logs`, `S/tmp`, `S/provider-data`,
+`S/engines`, `S/models`, `S/setup`, `S/mcp-gateway` and the short root
+`S/oa`. An isolated location has no `install` and no `upgrade-v1`.
+
+| machine | Windows | macOS | Linux |
+|---|---|---|---|
+| `M` | `%ProgramData%\openabstractions` | `/Library/Application Support/openabstractions` | `/etc/openabstractions` |
+| machine settings file | `M\config\config.json` | `M/config/config.json` | `/etc/openabstractions/config.json` |
+| 0.4.0 machine settings file, read until moved | `%ProgramData%\abstraction\config.json` | `/etc/abstraction/config.json` | `/etc/abstraction/config.json` |
+| machine service state, reserved | `M` | `M` | `/var/lib/openabstractions` |
+| frozen `upgrade-v1` | `%ProgramData%\abstraction\upgrade-v1` | none | none |
+
+The machine root holds administrator records only: the machine settings
+file and installer records. The frozen `upgrade-v1` keeps its 0.4.0 folder
+beside the 0.4.0 machine settings file. No secret is written at the machine
+location. A machine service's state folder is named and reserved: no 0.8
+process writes it. A machine service's shared content, cache, logs and
+endpoints have no folder yet. On Windows the
+elevated installer creates `M`, takes ownership for Administrators, replaces
+its DACL with inheritance broken and removes children it did not create, or
+fails the install naming the folder's owner. On macOS and Linux the machine
+level exists when a root-owned machine root passes `STO-L4`, whoever created
+it; administrators write it.
+
+A person's folder (Pictures, Documents, Downloads, Music, Videos, Desktop)
+is found for a caller that offers it as a destination. Windows reads the
+known folders `FOLDERID_Pictures`, `FOLDERID_Documents`,
+`FOLDERID_Downloads`, `FOLDERID_Music`, `FOLDERID_Videos` and
+`FOLDERID_Desktop` through the process token. macOS takes `$HOME/Pictures`,
+`Documents`, `Downloads`, `Music`, `Movies` (for videos) and `Desktop`.
+Linux reads `user-dirs.dirs` in `$XDG_CONFIG_HOME` (default `~/.config`),
+keys `XDG_PICTURES_DIR`, `XDG_DOCUMENTS_DIR`, `XDG_DOWNLOAD_DIR`,
+`XDG_MUSIC_DIR`, `XDG_VIDEOS_DIR` and `XDG_DESKTOP_DIR`, each `"$HOME/..."`
+or an absolute path; a missing file or key gives `$HOME/Pictures`,
+`Documents`, `Downloads`, `Music`, `Videos` or `Desktop`. A folder that
+cannot be read, is relative, or is `$HOME` itself (the specification's way
+to switch one off) is refused with `no_profile_folder`. A person's folder
+belongs to the person, and neither a sandbox nor a profile view refuses
+it.
+
+- **[STO-L1] Roots by location and class.** Every file at a location OA
+  chooses MUST lie under one root named by its location and its class or
+  record kind, at the place the tables above give for the platform. A
+  location a caller or an operator names (a download destination, DL-R20
+  and DL-R30; the NAS store, whose root reaches the runtime as a launch flag;
+  a folder adopted in place; ComfyUI's output folder) lies outside this
+  rule and follows its owning contract.
+- **[STO-L2] One resolver.** An OA process MUST obtain a root from `layout`
+  or from its supervisor's launch flags, and MUST NOT read profile folders,
+  XDG variables or the temporary directory by other means. The runtime
+  passes each provider it launches its roots as launch flags; roots never
+  travel in environment variables. A provider computes roots through
+  `layout` only when started by hand.
+- **[STO-L3] Refusal, never substitution.** When a root cannot be resolved
+  (no profile folder, a relative `$HOME`, a virtualized profile view, a
+  profile view that cannot be read, an App Sandbox container, a Flatpak or a
+  Snap), `layout` MUST refuse with a typed reason (`no_profile_folder`,
+  `virtualized_profile`, `unknown_profile_view`, `sandboxed`) and MUST NOT
+  substitute the temporary directory, the home folder or another location.
+  The checks run in this order: a sandbox (`sandboxed`), a profile view
+  that cannot be read (`unknown_profile_view`), a virtualized view
+  (`virtualized_profile`), then a folder or variable that is missing or
+  relative (`no_profile_folder`). Every call that resolves the user or the
+  machine location refuses so: the user roots, the machine roots,
+  classifying a path, and a path-bound path of the user location. An
+  isolated root is named, so neither a sandbox nor a view refuses it.
+- **[STO-L4] Machine trust.** A `machine` file MUST be read only when it and
+  every folder from it up to the machine root are owned by, and writable
+  only by, an administrator: SYSTEM, Administrators or TrustedInstaller on
+  Windows, root on Unix. On Windows a write is a right to change or remove
+  what is there (write or append data, delete, a folder's delete-child,
+  change permissions or owner); a right to add a new entry to a folder is
+  not one, since each file read is checked itself. Each entry is the object
+  a reader opens, links followed; who may read it is not judged. This
+  account is never an administrator, even in an elevated process. Every
+  entry that exists is judged first, and one owned or writable by anyone
+  other than an administrator gives `machine_untrusted`. Only then does a
+  missing file or folder, or no file named, give `machine_absent`. Either
+  reason leaves the machine level absent. Nothing falls back. The `config` module's
+  provenance (`CFG-P1`) carries the reason, so an administrator sees why policy is
+  absent.
+- **[STO-L5] Places OA never writes.** No file or folder OA names is
+  created as a direct child of the home folder, in the roaming profile
+  (`%APPDATA%`), or in a person's folder (Pictures, Documents, Downloads,
+  Music, Videos, Desktop) except at a destination a caller named. An agent
+  picture tool's default destination, `OpenAbstractions` in the Pictures
+  folder, is such a destination; the tool's own process writes it, and the
+  runtime writes nothing in a person's folder (`backlog/PICTURES-STORAGE.md`
+  ruling 2). Platform
+  convention folders such as `~/.local/share` and `~/Library` hold OA's
+  folders.
+- **[STO-L6] Isolated root.** A runtime given an isolated root `S` MUST place
+  every `user` kind under it and its short-root kinds under `S/oa`, MUST pass
+  it to every provider it launches, and MUST NOT read or write the account's
+  `user` roots or the machine level. A computed path over its kind's limit
+  is refused with `path_too_long`; tests that start engines use a short `S`.
+  Two runtimes never share one `S`.
+- **[STO-L7] Backup marks.** The cache root, the `engines` folder of `D`
+  and the short root's `e` folder (each the folder that holds every
+  engine), and each model set
+  its source can fetch again by digest MUST carry the platform's no-backup
+  mark from its creation: `CACHEDIR.TAG` (https://bford.info/cachedir/) on
+  every platform and the sticky Time Machine exclusion on macOS. A gated
+  set, a withdrawn upload and a person's import carry none.
+- **[STO-L8] Removal levels (pending the owner's D26).** Uninstall removes the
+  installation and its registrations; an account's roots are removed only
+  by that account's removal action, and the machine root only by an
+  administrator. Under every D26 option, an account's removal leaves the
+  installer's `install` and `upgrade-v1` children while an installation
+  exists.
+- **[STO-L9] Owner-only roots.** Every `user` and `isolated` root, and every
+  child `layout` creates, MUST be created owner-only. An owner-only folder
+  is a folder private to the account as identity `ID-D1` defines it, made
+  and checked by its `privatedir` package: mode 0700 on POSIX; on Windows
+  owned by the account with a protected DACL of the account and SYSTEM, set
+  at creation. `layout` judges a root or child in this order: a relative
+  path is refused (`not_absolute`); a missing folder is created; an
+  existing one MUST be refused when it is a link or junction (`link`), not
+  a folder (`not_directory`), owned by another account (`not_owner`), or
+  writable by another account (`open_to_others`); one already owner-only
+  that no other account can read is kept; any other MUST be tightened to
+  that descriptor (`privatedir.Tighten`). Tightening writes the folder's
+  own descriptor through a handle opened as the folder, and what the folder
+  already holds keeps its descriptor, an `ID-D3` model folder included. On
+  Windows a folder Administrators or SYSTEM own counts as the account's
+  and is tightened, since only an administrator, such as the account's own
+  elevated process, could have made it; tightening makes the account its
+  owner. On macOS and Linux a root-owned folder belongs to another account,
+  except for a process that runs as root. An administrator among a folder's
+  writers refuses nothing, since an administrator can write every folder. A
+  0.4.0 data root carries Administrators in its DACL and loses that entry
+  when it is tightened. A folder whose cleaned spelling does not lie under
+  the root it is made under is refused with `outside_root`. `--state-dir S` follows the rule. On macOS
+  and Linux the engine socket root is a child of `$TMPDIR` or
+  `$XDG_RUNTIME_DIR` only while that folder is the account's and open to no
+  group or other, the check inference `INF-EL2` applies; otherwise it is
+  `/tmp/oa-<uid>`. When another account holds
+  `/var/tmp/openabstractions-<uid>`, tmp is
+  `$XDG_RUNTIME_DIR/openabstractions/tmp` under the same check, otherwise a
+  fresh 0700 folder `/var/tmp/openabstractions-<uid>-<random>`.
+
+Locations of data whose owner lies elsewhere:
+
+| data | location |
+|---|---|
+| NAS download store (`nas_store`) | named by the operator, outside STO-L1; the `config` module names its key |
+| ComfyUI output folder | the ComfyUI installer's folder, or the person's choice recorded by Setup |
+| ComfyUI `user` (workflows) on macOS and Linux | the application's own data folder; `input`, `temp` and `launch` are cache |
+| TheNoise engine | the short root's `e/thenoise/<version>` from its next engine version |
+| inventoryd digests (Linux) | the cache root; the old file is recomputable and is deleted |
+| resource audit | stays in the runtime state and counts toward the logs budget |
+| MCP gateway handles under an isolated root | `S/mcp-gateway` |
+| extension installs | the host application's installer owns the folder |
+
+A remote runtime's roots are its serving account's roots on the remote
+host, and a client learns endpoints, handles and typed outcomes, never
+paths. A headless Linux runtime answers `no_secure_store` for secrets until
+its operator opts in to `file-0600`; people who share one remote runtime
+are separated by the services' keys. A job's lease tokens sit with the
+job record whose lease they hold, under the job store
+(`abstraction-job/CONTRACT.md`).
 
 ## Outcomes
 
@@ -455,6 +782,15 @@ a sweep once a minute.
 
 ## Divergences
 
+- **`Local.Path`.** This optional direct-provider interface is an explicit
+  local-binding extension. It projects that provider's own reference to a
+  path on the same machine; `Store` does not imply it. The path is a
+  machine-local reference, and authority stays with the caller's existing rights.
+- **Lend's `link`.** `Lend.link` is an explicit local-binding extension
+  describing the placement in the serving engine's directory. It is an
+  absolute path on that machine, valid only there; access to it stays with
+  the lending profile. The source remains named by its store and object; see
+  [Lending profile](#lending-profile).
 - **STO-R10.** Mutation detection is advisory, not an immutable snapshot:
   same-size writes with restored metadata may evade it. A content-addressed
   store that guarantees immutability by construction is the usual pattern;
@@ -470,7 +806,68 @@ a sweep once a minute.
   removes a `cache` object an open handle or live upload names; Android's
   guidance does not carry over.
 
+## Content transfer (not built)
+
+`abstraction.storage/content-transfer@1` delivers an object's bytes as a
+typed reference (VISION 2026-09-15; designed in
+`research/feedback-archive-2026-09-24/result-transfer-by-reference.md`;
+architect ruling 2026-11-12). No service answers it yet. The rules below
+state what a fill, its proof, its seal and the `mapping` kind mean wherever
+OA builds them; the provider kit's `modelfiles` is today's one
+implementation, for engines OA launches (provider kit CONTRACT.md INF-MS1..
+INF-MS9, KIT-MB1..KIT-MB6).
+
+- **[STO-D1] Sources.** A fill reads from a storage `Ref`
+  (`storage.thrift`), bytes located in the store that issued it, or from a
+  promise, bytes requested: a download request (`request.thrift`) or a want
+  the inventory records (`content.thrift` `Dangling`), naming the digest
+  and size. A reference the store does not find is a promise. Which
+  reference or promise serves a digest is a later design; a fill reads the
+  one its caller names. A fill from a promise is not built.
+- **[STO-D2] Fill.** The bytes are placed in an unnamed memory object the
+  filling process owns: a pagefile-backed section on Windows, a `memfd` on
+  Linux. No file is written. The object's whole size is counted on
+  `abstraction.resource` before its pages are touched. A download archive
+  entry (abstraction-download DL-R44) is a located source like any other:
+  its bytes are copied into the object and proved, and no engine maps or
+  reads the archive file in place.
+- **[STO-D3] Prove.** Every byte placed is hashed. The object is lent only
+  when the SHA-256 of all its bytes equals the digest, or, for an object
+  OA hashed whole before, when every span's SHA-256 equals OA's own record
+  of the object. A mismatch frees the object. A stream that exposes bytes
+  before the fill ends exposes only spans proved against a chunk manifest
+  OA trusts; it is not built.
+- **[STO-D4] Seal.** After the proof no writable view of the object exists,
+  and no process can make one: on Windows the section carries the protected
+  descriptor `D:P(A;;0x5;;;OW)` and every handle to it maps for reading
+  only; on Linux the `memfd` carries `F_SEAL_WRITE`, `F_SEAL_GROW`,
+  `F_SEAL_SHRINK` and `F_SEAL_SEAL`. The proof holds for the object's
+  lifetime.
+- **[STO-D5] The mapping kind.** A delivery's kind is one of `bytes`,
+  `mapping`, `device` and `promise`; the caller lists the kinds it accepts
+  in order and receives one of them or a typed refusal, never another. A
+  `mapping` is a read-only descriptor of a sealed object with its length
+  and digest. An engine OA launches receives it as a model bytes URI
+  (provider kit KIT-MB1); another verified process receives it duplicated
+  into that process, which is not built.
+- **[STO-D6] Release.** A mapping is held until its receiver releases it or
+  exits (provider kit KIT-MB4); the object is then freed, or kept while
+  memory is free under the residency rules, and its count on
+  `abstraction.resource` ends with it.
+
 ## Not built
+
+The remote form: an application reaching this service on another machine's
+runtime has no binding; no remote `content-reader@1` or `content-writer@1`
+exists, and a delegated request carries only digests (`abstraction-inference`
+INF-V3). When it is built, a remote receiver MUST refuse every request that
+needs a person with the outcome `forbidden` ([Outcomes](#outcomes)) and the
+reason "no person reachable on this runtime", until remote questions exist. A forwarded caller is the forwarding runtime's
+certificate subject; the agent behind it is an unverified label.
+
+The runtime's enablement of `content-changes@1`: `openabstractions` sets no
+`StorageChangesPolicy` on its host, so no runtime calls `EnableChanges`
+([Changes](#changes)).
 
 `Manifests` (`abstraction.storage/manifests@1`, `Describe`/`Publish`),
 `Holds` (`abstraction.storage/holds@1`, `Hold`/`Release`/`Renew`) and
@@ -482,3 +879,19 @@ by class, because a class declared at `Begin` would be an unverifiable
 claim. `InventorySource` is served by the sibling layer
 `abstraction-storage-over-local-stores`; see its own
 [CONTRACT.md](https://github.com/openabstractions/abstraction-storage-over-local-stores/blob/main/CONTRACT.md).
+
+Locations: `layout` resolves, creates and checks every root, and the
+`config` module's Go machine reader applies its `STO-L4` check. The modules that still compute
+their own folders are listed with their owners in
+`scripts/layout_sites.allowlist` and move to `layout` with the one-way
+migration of their records. Not built yet: the reason in the `config`
+module's provenance (`STO-L4`), the Windows installer taking ownership of
+the machine root,
+providers receiving their roots as launch flags (`STO-L2`), the runtime's
+refusal when a second installation's runtime finds the account served, and
+the removal levels (`STO-L8`, pending D26). The Python reader
+(`abstraction-config/python/abstraction_config.py` and ComfyUI's vendored
+copy) still checks the owner of the file and its folder only, and on
+Windows no writers: a file Administrators own that Users may change is read
+there and ignored by the Go reader until the 0.8.0 plan's W1-09, which owns
+that reader, applies `STO-L4`.

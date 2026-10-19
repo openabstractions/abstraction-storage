@@ -46,53 +46,9 @@ def _strs(out, v, depth):
 
 
 def _raw(out, s, depth):
-    b = s.encode("utf-8") if isinstance(s, str) else s
-    i, n = 0, len(b)
-    while i < n:
-        c = b[i]
-        if c in _WS:
-            i += 1
-        elif c == 0x22:
-            j = i + 1
-            while j < n:
-                if b[j] == 0x5C:
-                    j += 2
-                    continue
-                if b[j] == 0x22:
-                    j += 1
-                    break
-                j += 1
-            out += b[i:j]
-            i = j
-        elif c in (0x7B, 0x5B):
-            out.append(c)
-            i += 1
-            j = i
-            while j < n and b[j] in _WS:
-                j += 1
-            if j < n and b[j] in (0x7D, 0x5D):
-                out.append(b[j])
-                i = j + 1
-            else:
-                depth += 1
-                out += b"\n"
-                _pad(out, depth)
-        elif c in (0x7D, 0x5D):
-            depth -= 1
-            out += b"\n"
-            _pad(out, depth)
-            out.append(c)
-            i += 1
-        elif c == 0x2C:
-            out += b",\n"
-            _pad(out, depth)
-            i += 1
-        elif c == 0x3A:
-            out += b": "
-            i += 1
-        else:
-            out.append(c)
-            i += 1
+    # An opaque value's bytes as they are ([DEF-A3]).
+    # Whitespace around the value is not part of it.
+    out += (s.encode("utf-8") if isinstance(s, str) else bytes(s)).strip(bytes(_WS))
 
 
 def _rawmap(out, m, depth):
@@ -401,6 +357,9 @@ class ServiceErrorCode(_StrEnum):
     IDENTITY_REQUIRED = "identity_required"
 
 
+MAX_APPEND_BYTES = 65536
+
+
 INVENTORY_SOURCE_ERROR_CODES = ["caller_unavailable", "identity_required"]
 
 
@@ -565,7 +524,8 @@ class ListingPage:
 
 @dataclasses.dataclass(kw_only=True)
 class Object:
-    """One stored object, by stat only. locator is opaque provider binding data, as
+    """[Object](https://openabstractions.github.io/reference.html#concept-storage.content-object):
+    One stored object, by stat only. locator is opaque provider binding data, as
     storage Ref.locator; applications never treat it as a path or as authority.
     partial marks an interrupted transfer the store spells as such. digest is
     empty exactly when evidence is none."""
@@ -599,7 +559,8 @@ class Entry:
 
 @dataclasses.dataclass(kw_only=True)
 class Name:
-    """A name a program uses for this manifest, in that program's own vocabulary.
+    """[Name](https://openabstractions.github.io/reference.html#concept-storage.manifest-name):
+    A name a program uses for this manifest, in that program's own vocabulary.
     scheme is an open catalogue; seeds ollama, hf, lmstudio, comfyui, flm, jan,
     oci, stabilitymatrix, pinokio, swarmui."""
 
@@ -643,13 +604,14 @@ class Holder:
     established it; no domain inherits another's proofs. program is the holder's
     name in the holder vocabulary (ollama, lemonade, comfyui). instance
     distinguishes installations of one program: for declared holds the bound
-    peer's normalized executable identity as rights Subject.program spells it;
-    for observed holds the source's opaque identity for that installation (a
-    Stability Matrix package name, a Pinokio app, an install locator). For
-    declared holds account and instance are the receiving boundary's bound peer,
-    asserted by the service; for observed holds they are the source's words and
-    established_by is the source program the service bound. Never a
-    caller-supplied claim."""
+    peer's normalized executable identity as [rights
+    Subject.program](https://openabstractions.github.io/reference.html#concept-rights.subject)
+    spells it; for observed holds the source's opaque identity for that
+    installation (a Stability Matrix package name, a Pinokio app, an install
+    locator). For declared holds account and instance are the receiving
+    boundary's bound peer, asserted by the service; for observed holds they are
+    the source's words and established_by is the source program the service
+    bound. Never a caller-supplied claim."""
 
     account: str = ""
     program: str = ""
@@ -7958,6 +7920,72 @@ def decode(data):
     return v
 
 
+_JSON_RECORDS = {
+    Resource: (_write_resource, _read_resource),
+    OpenResult: (_write_open_result, _read_open_result),
+    Chunk: (_write_chunk, _read_chunk),
+    ReadResult: (_write_read_result, _read_read_result),
+    CloseResult: (_write_close_result, _read_close_result),
+    Upload: (_write_upload, _read_upload),
+    Stored: (_write_stored, _read_stored),
+    BeginResult: (_write_begin_result, _read_begin_result),
+    AppendResult: (_write_append_result, _read_append_result),
+    CommitResult: (_write_commit_result, _read_commit_result),
+    AbortResult: (_write_abort_result, _read_abort_result),
+    Change: (_write_change, _read_change),
+    ChangePage: (_write_change_page, _read_change_page),
+    ListedObject: (_write_listed_object, _read_listed_object),
+    ListingPage: (_write_listing_page, _read_listing_page),
+    Object: (_write_object, _read_object),
+    Entry: (_write_entry, _read_entry),
+    Name: (_write_name, _read_name),
+    Manifest: (_write_manifest, _read_manifest),
+    Holder: (_write_holder, _read_holder),
+    Basis: (_write_basis, _read_basis),
+    Hold: (_write_hold, _read_hold),
+    Dangling: (_write_dangling, _read_dangling),
+    StoreError: (_write_store_error, _read_store_error),
+    Store: (_write_store, _read_store),
+    HoldResult: (_write_hold_result, _read_hold_result),
+    ReleaseResult: (_write_release_result, _read_release_result),
+    RenewResult: (_write_renew_result, _read_renew_result),
+    DescribeResult: (_write_describe_result, _read_describe_result),
+    PublishResult: (_write_publish_result, _read_publish_result),
+    ManifestHolders: (_write_manifest_holders, _read_manifest_holders),
+    ObjectHolders: (_write_object_holders, _read_object_holders),
+    InventoryPage: (_write_inventory_page, _read_inventory_page),
+    RemoveResult: (_write_remove_result, _read_remove_result),
+    SourceDescription: (_write_source_description, _read_source_description),
+    SourceChange: (_write_source_change, _read_source_change),
+    SourcePage: (_write_source_page, _read_source_page),
+}
+
+
+def to_json(value):
+    """One record as JSON bytes, laid out as this module's documents are and
+    without the document terminator."""
+    codec = _JSON_RECORDS.get(type(value))
+    if codec is None:
+        raise TypeError("to_json takes a record of this module, not %s" % type(value).__name__)
+    out = bytearray()
+    codec[0](out, value, 0)
+    return bytes(out)
+
+
+def from_json(kind, data):
+    """Read one record of class kind from data; a refused input raises Refusal."""
+    codec = _JSON_RECORDS.get(kind)
+    if codec is None:
+        raise TypeError("from_json takes a record class of this module, not %r" % (kind,))
+    r = _Reader(bytes(data))
+    r.ws()
+    v = codec[1](r)
+    r.ws()
+    if r.pos < len(r.buf):
+        raise r.refuse("trailing_bytes")
+    return v
+
+
 # _REFUSALS is in the order two of them are chosen between.
 
 _REFUSALS = ["malformed", "bad_string", "number_spelling", "wrong_type", "bad_timestamp", "depth_exceeded", "duplicate_key", "duplicate_field", "unknown_field", "missing_field", "bad_binary", "bad_enum", "trailing_bytes"]
@@ -8193,7 +8221,8 @@ _SERVICE_RECORDS = {
 
 
 class ContentReader:
-    """Read-only bounded access through configured native Store+Local adapters.
+    """[ContentReader](https://openabstractions.github.io/reference.html#concept-storage.content-reader-service).
+    Read-only bounded access through configured native Store+Local adapters.
     Naming lookup is unverified; unsupported providers refuse. Writes use the
     separate content-writer profile. Callbacks are trusted provider code
     required to honor bounded execution/context."""
@@ -8232,6 +8261,8 @@ class ContentReaderClient(ContentReader):
         _request = _service_request("abstraction.storage/content-reader@1", "Open", _arguments)
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.storage/content-reader@1", "Open")
         _result = _service_decode(_read_oa_content_reader_open_result, _payload, 1)
+        if (_result.value.outcome == "opened") != (_result.value.resource is not None):
+            raise ServiceError("invalid_result", "")
         return _result.value
 
     def read(self, handle: str, offset: int, max_bytes: int) -> ReadResult:
@@ -8247,6 +8278,8 @@ class ContentReaderClient(ContentReader):
         _request = _service_request("abstraction.storage/content-reader@1", "Read", _arguments)
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.storage/content-reader@1", "Read")
         _result = _service_decode(_read_oa_content_reader_read_result, _payload, 1)
+        if (_result.value.outcome == "data") != (_result.value.chunk is not None):
+            raise ServiceError("invalid_result", "")
         return _result.value
 
     def close(self, handle: str) -> CloseResult:
@@ -8262,7 +8295,8 @@ class ContentReaderClient(ContentReader):
 
 
 class ContentWriter:
-    """Bounded authorized writes through configured native Store+Local+Writable
+    """[ContentWriter](https://openabstractions.github.io/reference.html#concept-storage.content-writer-service):
+    Bounded authorized writes through configured native Store+Local+Writable
     adapters. Uploads idle for 30 seconds expire and are discarded. Committed
     request records are retained for 10 minutes within one provider lifetime.
     Provider shutdown discards staged uploads."""
@@ -8318,6 +8352,8 @@ class ContentWriterClient(ContentWriter):
         _request = _service_request("abstraction.storage/content-writer@1", "Begin", _arguments)
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.storage/content-writer@1", "Begin")
         _result = _service_decode(_read_oa_content_writer_begin_result, _payload, 1)
+        if (_result.value.outcome == "started") != (_result.value.upload is not None):
+            raise ServiceError("invalid_result", "")
         return _result.value
 
     def append(self, handle: str, offset: int, data: bytes) -> AppendResult:
@@ -8344,6 +8380,8 @@ class ContentWriterClient(ContentWriter):
         _request = _service_request("abstraction.storage/content-writer@1", "Commit", _arguments)
         _payload = _service_response(self._transport.exchange_frame(_request), "abstraction.storage/content-writer@1", "Commit")
         _result = _service_decode(_read_oa_content_writer_commit_result, _payload, 1)
+        if (_result.value.outcome == "committed") != (_result.value.stored is not None):
+            raise ServiceError("invalid_result", "")
         return _result.value
 
     def abort(self, handle: str) -> AbortResult:
@@ -8711,8 +8749,9 @@ class InventorySource:
     def snapshot(self, continuation: str, limit: int) -> SourcePage:
         """Frozen listing of every manifest, stray object and dangling reference
         the source observes, in store then id order. limit 1..256. No hashing;
-        sizes come from stat and digests only from the program's own index or
-        names."""
+        sizes come from stat, and digests from the program's own index or names
+        or from a hash the source recorded earlier (a pinned release, or a file
+        a Verify of its manifest asked for)."""
         raise NotImplementedError
 
     def observe(self, cursor: str, max_changes: int, wait_ms: int) -> SourcePage:

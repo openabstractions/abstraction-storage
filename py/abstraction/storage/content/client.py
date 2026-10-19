@@ -3,7 +3,7 @@ import secrets
 
 import abstraction.storage.content as wire
 
-MAX_APPEND_BYTES = 65536
+MAX_APPEND_BYTES = wire.MAX_APPEND_BYTES
 
 
 def require(ok, message):
@@ -48,8 +48,6 @@ class Client:
     def open(self, naming_digest):
         require(digest(naming_digest), "canonical SHA256 digest required")
         result = self._client.open(naming_digest)
-        require((result.outcome == "opened") == (result.resource is not None),
-                "inconsistent open outcome")
         if result.resource is not None:
             require(resource(result.resource) and result.resource.digest == naming_digest,
                     "inconsistent resource")
@@ -60,8 +58,6 @@ class Client:
                 and type(max_bytes) is int and 1 <= max_bytes <= 65536,
                 "invalid read bounds")
         result = self._client.read(value.handle, offset, max_bytes)
-        require((result.outcome == "data") == (result.chunk is not None),
-                "inconsistent read outcome")
         if result.chunk is not None:
             chunk = result.chunk
             require(chunk.offset == offset and chunk.total == value.size
@@ -200,8 +196,7 @@ class Writer:
                 and 0 <= size < 2**63, "invalid write request")
         result = self._client.begin(request, naming_digest, size)
         stored_outcome = result.outcome in ("committed", "present")
-        require((result.outcome == "started") == (result.upload is not None)
-                and stored_outcome == (result.stored is not None)
+        require(stored_outcome == (result.stored is not None)
                 and type(result.limit) is int and result.limit >= 0,
                 "inconsistent begin result")
         if result.upload is not None:
@@ -233,8 +228,7 @@ class Writer:
         require(upload(value), "invalid upload")
         result = self._client.commit(value.handle)
         stored = result.stored
-        require((result.outcome == "committed") == (stored is not None)
-                and (stored is None or (stored.digest == value.digest
+        require((stored is None or (stored.digest == value.digest
                                         and stored.size == value.size
                                         and stored.evidence == "hashed"))
                 and (result.outcome == "incomplete" or result.received == 0)

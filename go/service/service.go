@@ -12,7 +12,6 @@ import (
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
 	"os/user"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -24,7 +23,7 @@ type Host struct {
 	listener  listen.Listener
 	once      sync.Once
 	workers   sync.WaitGroup
-	slots     chan struct{}
+	slots     listen.CallAdmission
 	OnStopped func()
 }
 
@@ -36,6 +35,7 @@ type Component struct {
 	writers   *writers
 	changes   *changeJournal
 	inventory *inventory
+	removals  *removal
 	interval  time.Duration
 	owner     string
 	ctx       context.Context
@@ -60,7 +60,7 @@ func Listen(endpoint string, store storage.Store, policy Policy) (*Host, error) 
 		component.Close()
 		return nil, e
 	}
-	return &Host{Component: component, listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 32}), slots: make(chan struct{}, 32)}, nil
+	return &Host{Component: component, listener: listen.Sessions(l, listen.SessionOptions{MaxSessions: 32}), slots: listen.NewCallAdmission(32)}, nil
 }
 
 // NewComponent requires an explicit store and read policy. The principal is
@@ -205,16 +205,14 @@ func (h *Host) Serve(ctx context.Context) error {
 			}
 			return e
 		}
-		select {
-		case h.slots <- struct{}{}:
-		default:
-			conn.Close()
+		release, admitted := h.slots.Take(conn)
+		if !admitted {
 			continue
 		}
 		h.workers.Add(1)
 		go func() {
 			defer h.workers.Done()
-			defer func() { <-h.slots }()
+			defer release()
 			defer conn.Close()
 			callCtx, cancel := context.WithTimeout(h.ctx, 35*time.Second)
 			defer cancel()
@@ -223,8 +221,10 @@ func (h *Host) Serve(ctx context.Context) error {
 				defer call.Close()
 			}
 			if e == nil {
-				var reply []byte
-				reply, e = api.ServeEndpoint(call.Frame, "openabstractions", "", h.Component.Services(call, callCtx)...)
+				reply, private := h.Component.archiveRestore(call, callCtx)
+				if !private {
+					reply, e = api.ServeEndpoint(call.Frame, "openabstractions", "", h.Component.Services(call, callCtx)...)
+				}
 				if e == nil {
 					e = call.Reply(reply)
 				}
@@ -250,12 +250,25 @@ func (h *Component) Start(ctx context.Context) error {
 	}
 	h.serving = true
 	writers, changes, interval, composed := h.writers, h.changes, h.interval, h.inventory
+	var restoreWork func(context.Context, ArchivePlacement, ArchiveRelease)
+	if writers != nil && h.removals != nil {
+		restoreWork = h.removals.options.ArchiveRestoreWork
+		if restoreWork != nil {
+			h.workers.Add(1)
+		}
+	}
 	h.workers.Add(1)
 	if changes != nil {
 		h.workers.Add(1)
 	}
 	h.stopStart = context.AfterFunc(ctx, func() { h.Close() })
 	h.lifecycle.Unlock()
+	if restoreWork != nil {
+		go func() {
+			defer h.workers.Done()
+			restoreWork(h.ctx, writers.placeArchive, writers.releaseArchive)
+		}()
+	}
 	if writers != nil && changes != nil {
 		writers.mu.Lock()
 		writers.onCommitted = changes.committed
@@ -320,9 +333,13 @@ func (h *Component) Services(call *listen.FramedCall, callCtx context.Context) [
 			peer = proven
 		}
 	}
-	scope := callerScope(peer, h.owner)
+	scope := ""
+	if binding := receivingNativeBinding(peer, h.owner); binding != nil {
+		scope = binding.owner.scope()
+		callCtx = context.WithValue(callCtx, nativeBindingKey{}, binding)
+	}
 	h.lifecycle.Lock()
-	writers, changes, composed := h.writers, h.changes, h.inventory
+	writers, changes, composed, removals := h.writers, h.changes, h.inventory, h.removals
 	h.lifecycle.Unlock()
 	services := []api.ServedService{&api.ContentReaderDispatcher{Handler: receiver{registry: h.registry, scope: scope, peer: peer, ctx: callCtx}}}
 	if writers != nil {
@@ -338,32 +355,41 @@ func (h *Component) Services(call *listen.FramedCall, callCtx context.Context) [
 	if composed != nil {
 		services = append(services, &api.InventoryDispatcher{Handler: inventoryReceiver{inventory: composed, scope: scope, peer: peer, ctx: callCtx}})
 	}
+	if removals != nil {
+		receiver := removalReceiver{removal: removals, registry: h.registry, writers: writers, scope: scope, peer: peer, ctx: callCtx}
+		services = append(services,
+			&api.ContentRemoverDispatcher{Handler: receiver},
+			&api.InventorySourceDispatcher{Handler: removalSource{receiver}},
+			&api.HoldsDispatcher{Handler: holdsReceiver{removal: removals, scope: scope, peer: peer, ctx: callCtx}})
+	}
 	return services
 }
 func callerScope(peer *identity.Peer, owner string) string {
+	scope, _ := callerCapture(peer, owner)
+	return scope
+}
+
+// callerCapture keeps the legacy encoding and its bound path observation at
+// their existing owner. The canonical binding consumes the observation directly.
+func callerCapture(peer *identity.Peer, owner string) (string, string) {
 	if peer == nil {
-		return ""
+		return "", ""
 	}
-	u, e := peer.User.AtLeast(listen.Program.User)
-	if e != nil {
-		return ""
-	}
-	principal := ""
-	switch u.Kind {
-	case "windows":
-		principal = u.SID
-	case "posix":
-		if u.UID >= 0 {
-			principal = strconv.Itoa(u.UID)
-		}
-	}
-	if principal == "" || principal != owner {
-		return ""
+	s, verdict := identity.AdmitOwner(peer, identity.Need{User: listen.Program.User}, owner)
+	if verdict != identity.OwnerAdmitted {
+		return "", ""
 	}
 	path, e := peer.Path.AtLeast(listen.Program.Path)
 	if e != nil || !filepath.IsAbs(path) {
-		return ""
+		return "", ""
 	}
-	raw, _ := json.Marshal([]string{"owner-program@1", u.Kind, principal, filepath.Clean(path)})
+	return legacyOwnerProgramJSON(s.AccountKind, s.Account, path), filepath.Clean(path)
+}
+
+// legacyOwnerProgramJSON preserves storage's retained raw JSON scope. It is
+// distinct from acceptanceprovider's hashed owner-program scope and grants no
+// identity proof. Existing records keep these exact bytes.
+func legacyOwnerProgramJSON(kind, account, executable string) string {
+	raw, _ := json.Marshal([]string{"owner-program@1", kind, account, filepath.Clean(executable)})
 	return string(raw)
 }

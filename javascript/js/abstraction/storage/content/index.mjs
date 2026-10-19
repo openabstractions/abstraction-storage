@@ -125,7 +125,9 @@ export {
   encodeStoreError,
   encodeStored,
   encodeUpload,
+  fromJson,
   inventorySourceErrorCodes,
+  maxAppendBytes,
   newAbortResult,
   newAppendResult,
   newBasis,
@@ -163,4 +165,5 @@ export {
   newStoreError,
   newStored,
   newUpload,
+  toJson,
 } from "./internal.mjs";

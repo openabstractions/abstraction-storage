@@ -2,11 +2,11 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Open Abstractions — schema</title>
+<title>OpenAbstractions — schema</title>
 <link rel="stylesheet" href="style.css">
 
 <main>
-<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">Open Abstractions</a>
+<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">OpenAbstractions</a>
 <a href="adopt.html">Adopt</a><a href="cases.html">Cases</a><span class="nav-devs-label">for developers</span><a href="reference.html">Reference</a><a href="coverage.html">Coverage</a><a href="catalogue.html">Catalogue</a><a href="https://github.com/openabstractions">GitHub</a></nav>
 
 
@@ -18,10 +18,10 @@
 <p>Direct provider interface. No IPC endpoint is supplied; native provider binding handles errors and reference provenance.</p>
 <p>Interface-only output: implement these methods directly. No IPC client, dispatcher, message envelope or transport binding is emitted. Record codecs remain available. Method return/error signatures are retained; oneway marks the schema declaration, not a delivery or persistence guarantee for a direct call.</p>
 <p></p>
-<h3><code>Name</code></h3><p><code>request-response</code> <code>string</code></p><ul>
+<h3><code>Name</code></h3><p><code>request-response</code> <code>string</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 </ul>
 <p></p>
-<h3><code>Find</code></h3><p><code>request-response</code> <code>FindResult</code></p><ul>
+<h3><code>Find</code></h3><p><code>request-response</code> <code>FindResult</code> · readonly</p><ul>
 <li>Argument 1: <code>string</code> <code>digest</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Reserve a destination without writing bytes. A read-only provider refuses. The provider chooses its location.</p>
@@ -33,14 +33,14 @@
 <p>Optional direct local-provider extension; never a remote authority grant.</p>
 <p>Interface-only output: implement these methods directly. No IPC client, dispatcher, message envelope or transport binding is emitted. Record codecs remain available. Method return/error signatures are retained; oneway marks the schema declaration, not a delivery or persistence guarantee for a direct call.</p>
 <p>Optional explicit local binding projects its own reference onto this machine. Availability of this interface is not implied by Store.</p>
-<h3><code>Path</code></h3><p><code>request-response</code> <code>string</code></p><ul>
+<h3><code>Path</code></h3><p><code>request-response</code> <code>string</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>Ref</code> <code>reference</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Writable">Interface <code>Writable</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Optional direct writable-provider extension.</p>
 <p>Interface-only output: implement these methods directly. No IPC client, dispatcher, message envelope or transport binding is emitted. Record codecs remain available. Method return/error signatures are retained; oneway marks the schema declaration, not a delivery or persistence guarantee for a direct call.</p>
 <p>Commit already-written bytes under their digest, making a reservation findable. Preserve provider validation and errors.</p>
-<h3><code>Commit</code></h3><p><code>request-response</code> <code>void</code></p><ul>
+<h3><code>Commit</code></h3><p><code>request-response</code> <code>void</code> · idempotent <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>Ref</code> <code>reference</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="encoding">Encoding <span class="tag">[DEF-E1]</span></h2>

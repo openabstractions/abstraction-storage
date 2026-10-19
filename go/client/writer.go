@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 	"io"
 	"time"
 )
@@ -17,6 +18,10 @@ type Stored = api.Stored
 
 // MaxAppendBytes bounds one Append payload.
 const MaxAppendBytes = 65536
+
+// Keep the public untyped constant equal to the canonical bound.
+const _ = uint(MaxAppendBytes - api.MaxAppendBytes)
+const _ = uint(api.MaxAppendBytes - MaxAppendBytes)
 
 // Writer stages bounded uploads through one content-writer binding.
 type Writer struct{ transport listen.FrameClient }
@@ -60,11 +65,11 @@ func validRequest(r string) bool {
 }
 
 func validUpload(u Upload) bool {
-	return u.Handle != "" && len(u.Handle) <= 128 && validDigest(u.Digest) && u.Size >= 0 && u.Received >= 0 && u.Received <= u.Size
+	return u.Handle != "" && len(u.Handle) <= 128 && contentdigest.Valid(u.Digest) && u.Size >= 0 && u.Received >= 0 && u.Received <= u.Size
 }
 
 func (w *Writer) Begin(ctx context.Context, request, digest string, size int64) (api.BeginResult, error) {
-	if !validRequest(request) || !validDigest(digest) || size < 0 {
+	if !validRequest(request) || !contentdigest.Valid(digest) || size < 0 {
 		return api.BeginResult{}, errors.New("storage: invalid write request")
 	}
 	if e := ctx.Err(); e != nil {
@@ -76,7 +81,7 @@ func (w *Writer) Begin(ctx context.Context, request, digest string, size int64) 
 	}
 	storedOutcome := r.Outcome == api.BeginOutcomeCommitted || r.Outcome == api.BeginOutcomePresent
 	switch {
-	case (r.Outcome == api.BeginOutcomeStarted) != (r.Upload != nil), storedOutcome != (r.Stored != nil), r.Limit < 0:
+	case storedOutcome != (r.Stored != nil), r.Limit < 0:
 		return api.BeginResult{}, errors.New("storage: inconsistent begin result")
 	case r.Upload != nil && (!validUpload(*r.Upload) || r.Upload.Digest != digest || r.Upload.Size != size):
 		return api.BeginResult{}, errors.New("storage: inconsistent upload")
@@ -88,7 +93,7 @@ func (w *Writer) Begin(ctx context.Context, request, digest string, size int64) 
 
 func (w *Writer) Append(ctx context.Context, upload Upload, offset int64, data []byte) (api.AppendResult, error) {
 	n := int64(len(data))
-	if !validUpload(upload) || offset < 0 || n < 1 || n > MaxAppendBytes {
+	if !validUpload(upload) || offset < 0 || n < 1 || n > int64(api.MaxAppendBytes) {
 		return api.AppendResult{}, errors.New("storage: invalid append bounds")
 	}
 	if e := ctx.Err(); e != nil {
@@ -126,7 +131,7 @@ func (w *Writer) Commit(ctx context.Context, upload Upload) (api.CommitResult, e
 	if e != nil {
 		return api.CommitResult{}, e
 	}
-	if (r.Outcome == api.CommitOutcomeCommitted) != (r.Stored != nil) || r.Stored != nil && (r.Stored.Digest != upload.Digest || r.Stored.Size != upload.Size || r.Stored.Evidence != api.EvidenceHashed) ||
+	if r.Stored != nil && (r.Stored.Digest != upload.Digest || r.Stored.Size != upload.Size || r.Stored.Evidence != api.EvidenceHashed) ||
 		r.Outcome != api.CommitOutcomeIncomplete && r.Received != 0 || r.Received < 0 || r.Received > upload.Size {
 		return api.CommitResult{}, errors.New("storage: inconsistent commit result")
 	}
@@ -159,9 +164,9 @@ func (w *Writer) Write(ctx context.Context, request, digest string, content io.R
 		return Stored{}, &OutcomeError{"begin", begun.Outcome.String()}
 	}
 	upload := *begun.Upload
-	buffer := make([]byte, MaxAppendBytes)
+	buffer := make([]byte, api.MaxAppendBytes)
 	for offset := upload.Received; offset < size; {
-		n := min(int64(MaxAppendBytes), size-offset)
+		n := min(int64(api.MaxAppendBytes), size-offset)
 		read, err := content.ReadAt(buffer[:n], offset)
 		if int64(read) != n {
 			if err == nil {

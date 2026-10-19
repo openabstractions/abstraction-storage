@@ -2,6 +2,8 @@ package client
 
 import (
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	"github.com/openabstractions/abstraction-storage/go/internal/personfolders"
+	"os"
 	"testing"
 )
 
@@ -13,7 +15,8 @@ func TestChunkCombinations(t *testing.T) {
 	if e := validateRead(good(), r, 0, 3); e != nil {
 		t.Fatal(e)
 	}
-	for _, mutate := range []func(*api.ReadResult){func(x *api.ReadResult) { x.Outcome = api.ReadOutcomeGap }, func(x *api.ReadResult) { x.Chunk = nil }, func(x *api.ReadResult) { x.Chunk.Offset = 1 }, func(x *api.ReadResult) { x.Chunk.Total = 4 }, func(x *api.ReadResult) { x.Chunk.EOF = false }, func(x *api.ReadResult) { x.Chunk.Data = nil; x.Chunk.EOF = false }} {
+	// Presence contradictions run through the shared generated RPC corpus.
+	for _, mutate := range []func(*api.ReadResult){func(x *api.ReadResult) { x.Chunk.Offset = 1 }, func(x *api.ReadResult) { x.Chunk.Total = 4 }, func(x *api.ReadResult) { x.Chunk.EOF = false }, func(x *api.ReadResult) { x.Chunk.Data = nil; x.Chunk.EOF = false }} {
 		x := good()
 		mutate(&x)
 		if validateRead(x, r, 0, 3) == nil {
@@ -24,3 +27,6 @@ func TestChunkCombinations(t *testing.T) {
 		t.Fatal(e)
 	}
 }
+
+// TestMain confines per-user folders to the canonical owned test fixture.
+func TestMain(m *testing.M) { os.Exit(personfolders.Main(m)) }

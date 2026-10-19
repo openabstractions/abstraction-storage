@@ -3,14 +3,16 @@ package service
 import (
 	"context"
 	"errors"
+	cursorcodec "github.com/openabstractions/abstraction-watch/go/cursor"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	identity "github.com/openabstractions/abstraction-identity"
+	storage "github.com/openabstractions/abstraction-storage/go"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 const (
@@ -300,26 +302,64 @@ type ComposedInventory struct {
 	Manifests []api.ManifestHolders
 	Objects   []api.ObjectHolders
 	Dangling  []api.Dangling
+	// Incomplete names the programs of the sources that did not answer.
+	// Their accepted stores are in Stores with the error
+	// storage.UnansweredSourceError and none of their records.
+	Incomplete []string
 }
 
-// Compose drains every designated source once. A source that does not answer
-// refuses the whole composition, as it does on a served page.
+// Compose drains every designated source once, all of them at once. A source
+// that does not answer within ctx or its own call budget leaves its accepted
+// stores marked unread (Incomplete, and each store carries
+// storage.UnansweredSourceError) and the others' records stand; the composition is
+// refused only when no source answers. A served page still refuses as a
+// whole (composeSources).
 func Compose(ctx context.Context, designated []DesignatedSource) (ComposedInventory, error) {
-	stores, records, status := composeSources(ctx, designated)
-	if status != "" {
-		return ComposedInventory{}, errInventoryUnavailable
+	type answer struct {
+		stores  []api.Store
+		records []record
+		status  string
 	}
-	out := ComposedInventory{Stores: stores}
-	for _, r := range records {
-		switch {
-		case r.manifest != nil:
-			out.Manifests = append(out.Manifests, *r.manifest)
-		case r.object != nil:
-			out.Objects = append(out.Objects, *r.object)
-		case r.dangling != nil:
-			out.Dangling = append(out.Dangling, *r.dangling)
+	answers := make([]answer, len(designated))
+	var wg sync.WaitGroup
+	for i, source := range designated {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			stores, records, status := composeSources(ctx, []DesignatedSource{source})
+			answers[i] = answer{stores, records, status}
+		}()
+	}
+	wg.Wait()
+	out := ComposedInventory{}
+	answered := 0
+	for i, a := range answers {
+		if a.status != "" {
+			source := designated[i]
+			out.Incomplete = append(out.Incomplete, source.Program)
+			for _, name := range source.Stores {
+				out.Stores = append(out.Stores, api.Store{Name: name, Present: true, Placement: api.PlacementLocal,
+					Errors: []api.StoreError{{Kind: api.StoreErrorKindOther, Detail: storage.UnansweredSourceError}}})
+			}
+			continue
+		}
+		answered++
+		out.Stores = append(out.Stores, a.stores...)
+		for _, r := range a.records {
+			switch {
+			case r.manifest != nil:
+				out.Manifests = append(out.Manifests, *r.manifest)
+			case r.object != nil:
+				out.Objects = append(out.Objects, *r.object)
+			case r.dangling != nil:
+				out.Dangling = append(out.Dangling, *r.dangling)
+			}
 		}
 	}
+	if answered == 0 && len(designated) > 0 {
+		return ComposedInventory{}, errInventoryUnavailable
+	}
+	sort.SliceStable(out.Stores, func(a, b int) bool { return out.Stores[a].Name < out.Stores[b].Name })
 	return out, nil
 }
 
@@ -444,9 +484,9 @@ func (c inventoryReceiver) listStoreScoped(store, continuation string, limit int
 		id = token
 		i.snapshots[id] = &inventorySnapshot{stores: stores, records: records, cursor: cursor, scope: c.scope, store: store}
 	} else {
-		word := ""
-		var ok bool
-		id, word, ok = strings.Cut(continuation, ":")
+		envelope, ok := (cursorcodec.Codec{Separator: ":"}).Parse(continuation)
+		id = envelope.Epoch
+		word := envelope.Payload
 		n, err := strconv.Atoi(word)
 		if !ok || err != nil || n < 0 || strconv.Itoa(n) != word {
 			i.mu.Unlock()
@@ -485,7 +525,7 @@ func (c inventoryReceiver) listStoreScoped(store, continuation string, limit int
 	}
 	out.Complete = index == len(records)
 	if !out.Complete {
-		out.Continuation = id + ":" + strconv.Itoa(index)
+		out.Continuation = (cursorcodec.Codec{Separator: ":"}).Encode(cursorcodec.Envelope{Epoch: id, Payload: strconv.Itoa(index)})
 	}
 	if status := c.authorization(); status != "" {
 		return inventoryRefusal(inventoryOutcome(status))
@@ -582,7 +622,7 @@ func (c inventoryReceiver) Unheld(continuation string, limit int64) (api.Invento
 // Find answers from one composition taken now, because a digest lookup that
 // paged an older snapshot would answer about content that has since moved.
 func (c inventoryReceiver) Find(digest string) (api.InventoryPage, error) {
-	if !validDigest(digest) {
+	if !contentdigest.Valid(digest) {
 		return inventoryRefusal(api.InventoryOutcomeInvalid)
 	}
 	if status := c.authorization(); status != "" {

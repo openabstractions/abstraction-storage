@@ -124,6 +124,9 @@ var (
 	ErrReadOnly = errors.New("storage: this store is read-only")
 	// ErrNotFound means these bytes are not here.
 	ErrNotFound = errors.New("storage: not found")
+	// ErrUnavailable means the store could not make the bytes durable now; a
+	// later attempt may succeed.
+	ErrUnavailable = errors.New("storage: unavailable")
 )
 
 // Locator returns a ref's internal location. For the store that produced it.

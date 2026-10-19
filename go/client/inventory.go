@@ -7,6 +7,7 @@ import (
 
 	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 )
 
 type InventoryPage = api.InventoryPage
@@ -133,7 +134,7 @@ func (c *Inventory) Unheld(ctx context.Context, continuation string, limit int64
 
 // Find lists what carries one canonical digest, and the references that want it.
 func (c *Inventory) Find(ctx context.Context, digest string) (api.InventoryPage, error) {
-	if !validDigest(digest) {
+	if !contentdigest.Valid(digest) {
 		return api.InventoryPage{}, errors.New("storage: invalid digest")
 	}
 	page, err := c.call(ctx).Find(digest)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/openabstractions/abstraction-identity/listen"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 	"time"
 )
 
@@ -45,7 +46,7 @@ func validChangePage(p api.ChangePage, cursor string, max int64) error {
 	}
 	var last int64
 	for _, ch := range p.Changes {
-		if ch.Sequence <= last || !validDigest(ch.Digest) || ch.Size < 0 || (ch.Kind != api.ChangeKindAdded && ch.Kind != api.ChangeKindRemoved) {
+		if ch.Sequence <= last || !contentdigest.Valid(ch.Digest) || ch.Size < 0 || (ch.Kind != api.ChangeKindAdded && ch.Kind != api.ChangeKindRemoved) {
 			return errors.New("storage: inconsistent change entry")
 		}
 		last = ch.Sequence
@@ -84,7 +85,7 @@ func validListingPage(p api.ListingPage, limit int64) error {
 	}
 	previous := ""
 	for _, o := range p.Objects {
-		if !validDigest(o.Digest) || o.Size < 0 || o.Digest <= previous {
+		if !contentdigest.Valid(o.Digest) || o.Size < 0 || o.Digest <= previous {
 			return errors.New("storage: inconsistent listed object")
 		}
 		previous = o.Digest

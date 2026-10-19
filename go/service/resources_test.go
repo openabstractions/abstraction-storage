@@ -25,6 +25,46 @@ func fixture(t *testing.T) (*registry, receiver, string, string) {
 	t.Cleanup(r.close)
 	return r, receiver{r, "account-program", nil, context.Background()}, digest, path
 }
+
+func TestResourceDetectsSameSizeRewriteWithRestoredTime(t *testing.T) {
+	r, c, digest, path := fixture(t)
+	opened, err := c.Open(digest)
+	if err != nil || opened.Outcome.String() != "opened" {
+		t.Fatal(opened, err)
+	}
+	h := opened.Resource.Handle
+	v := r.resources[h]
+	before := v.stamp
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if err := os.WriteFile(path, []byte(strings.Repeat("x", int(v.initial.Size()))), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, v.initial.ModTime(), v.initial.ModTime()); err != nil {
+			t.Fatal(err)
+		}
+		after, info, err := identity.FileStamp(v.file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Size() != v.initial.Size() || !info.ModTime().Equal(v.initial.ModTime()) {
+			t.Fatal("fixture changed size/time")
+		}
+		if after != before {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Skip("filesystem does not expose an advanced change stamp")
+		}
+	}
+	got, err := c.Read(h, 0, 3)
+	if err != nil || got.Outcome.String() != "changed" || got.Chunk != nil {
+		t.Fatal(got, err)
+	}
+	if next, _ := c.Read(h, 0, 3); next.Outcome.String() != "gap" {
+		t.Fatal(next)
+	}
+}
 func TestResourceScopeExpiryRevocationAndMutation(t *testing.T) {
 	r, c, d, path := fixture(t)
 	opened, e := c.Open(d)

@@ -124,7 +124,7 @@ export declare class ContentChangesClient {
 
 export declare const ContentChangesService: Readonly<{ wireName: "abstraction.storage/content-changes@1"; Client: typeof ContentChangesClient }>;
 
-/** Read-only bounded access through configured native Store+Local adapters. Naming lookup is unverified; unsupported providers refuse. Writes use the separate content-writer profile. Callbacks are trusted provider code required to honor bounded execution/context. */
+/** [ContentReader](https://openabstractions.github.io/reference.html#concept-storage.content-reader-service). Read-only bounded access through configured native Store+Local adapters. Naming lookup is unverified; unsupported providers refuse. Writes use the separate content-writer profile. Callbacks are trusted provider code required to honor bounded execution/context. */
 export declare class ContentReaderClient {
   constructor(transport: FrameTransport);
   /** Canonical sha256: plus 64 lowercase hexadecimal digits. Explicit content policy required; same-account identity alone grants no content permission. At most 32 resources globally and 8 per scope; 30 seconds idle expires. */
@@ -145,7 +145,7 @@ export declare class ContentRemoverClient {
 
 export declare const ContentRemoverService: Readonly<{ wireName: "abstraction.storage/content-remover@1"; Client: typeof ContentRemoverClient }>;
 
-/** Bounded authorized writes through configured native Store+Local+Writable adapters. Uploads idle for 30 seconds expire and are discarded. Committed request records are retained for 10 minutes within one provider lifetime. Provider shutdown discards staged uploads. */
+/** [ContentWriter](https://openabstractions.github.io/reference.html#concept-storage.content-writer-service): Bounded authorized writes through configured native Store+Local+Writable adapters. Uploads idle for 30 seconds expire and are discarded. Committed request records are retained for 10 minutes within one provider lifetime. Provider shutdown discards staged uploads. */
 export declare class ContentWriterClient {
   constructor(transport: FrameTransport);
   /** request is a caller-retained identity of 16..128 characters from A-Z a-z 0-9 _ -, scoped to the receiving account/program. digest is canonical sha256; size is the declared total, 0..limit. Write authorization precedes every lookup and provider effect. The same request with the same digest and size returns its live upload or committed result; different digest or size is conflict. present reports an existing naming match. busy reports another live upload of the same digest. At most 16 uploads globally, 4 per scope and 256 request records. */
@@ -241,13 +241,14 @@ export interface HoldResult {
 // established it; no domain inherits another's proofs. program is the holder's
 // name in the holder vocabulary (ollama, lemonade, comfyui). instance
 // distinguishes installations of one program: for declared holds the bound
-// peer's normalized executable identity as rights Subject.program spells it;
-// for observed holds the source's opaque identity for that installation (a
-// Stability Matrix package name, a Pinokio app, an install locator). For
-// declared holds account and instance are the receiving boundary's bound peer,
-// asserted by the service; for observed holds they are the source's words and
-// established_by is the source program the service bound. Never a
-// caller-supplied claim.
+// peer's normalized executable identity as [rights
+// Subject.program](https://openabstractions.github.io/reference.html#concept-rights.subject)
+// spells it; for observed holds the source's opaque identity for that
+// installation (a Stability Matrix package name, a Pinokio app, an install
+// locator). For declared holds account and instance are the receiving
+// boundary's bound peer, asserted by the service; for observed holds they are
+// the source's words and established_by is the source program the service
+// bound. Never a caller-supplied claim.
 export interface Holder {
   account: string;
   program: string;
@@ -315,7 +316,7 @@ export declare const InventoryService: Readonly<{ wireName: "abstraction.storage
 export declare class InventorySourceClient {
   constructor(transport: FrameTransport);
   describe(): Promise<SourceDescription>;
-  /** Frozen listing of every manifest, stray object and dangling reference the source observes, in store then id order. limit 1..256. No hashing; sizes come from stat and digests only from the program's own index or names. */
+  /** Frozen listing of every manifest, stray object and dangling reference the source observes, in store then id order. limit 1..256. No hashing; sizes come from stat, and digests from the program's own index or names or from a hash the source recorded earlier (a pinned release, or a file a Verify of its manifest asked for). */
   snapshot(continuation: string, limit: bigint): Promise<SourcePage>;
   /** Changes since cursor in journal order; empty cursor starts at the end; gap after restart or an aged cursor. max_changes 1..256; wait_ms 0..30000. */
   observe(cursor: string, maxChanges: bigint, waitMs: bigint): Promise<SourcePage>;
@@ -326,6 +327,47 @@ export declare class InventorySourceClient {
 }
 
 export declare const InventorySourceService: Readonly<{ wireName: "abstraction.storage/inventory-source@1"; Client: typeof InventorySourceClient }>;
+
+// JsonRecords maps each record name toJson and fromJson take to its type.
+export interface JsonRecords {
+  Resource: Resource;
+  OpenResult: OpenResult;
+  Chunk: Chunk;
+  ReadResult: ReadResult;
+  CloseResult: CloseResult;
+  Upload: Upload;
+  Stored: Stored;
+  BeginResult: BeginResult;
+  AppendResult: AppendResult;
+  CommitResult: CommitResult;
+  AbortResult: AbortResult;
+  Change: Change;
+  ChangePage: ChangePage;
+  ListedObject: ListedObject;
+  ListingPage: ListingPage;
+  Object: Object;
+  Entry: Entry;
+  Name: Name;
+  Manifest: Manifest;
+  Holder: Holder;
+  Basis: Basis;
+  Hold: Hold;
+  Dangling: Dangling;
+  StoreError: StoreError;
+  Store: Store;
+  HoldResult: HoldResult;
+  ReleaseResult: ReleaseResult;
+  RenewResult: RenewResult;
+  DescribeResult: DescribeResult;
+  PublishResult: PublishResult;
+  ManifestHolders: ManifestHolders;
+  ObjectHolders: ObjectHolders;
+  InventoryPage: InventoryPage;
+  RemoveResult: RemoveResult;
+  SourceDescription: SourceDescription;
+  SourceChange: SourceChange;
+  SourcePage: SourcePage;
+}
 
 export type Lifetime = (typeof Lifetime)[keyof typeof Lifetime];
 export declare const Lifetime: Readonly<{ UntilReleased: "until_released"; Lease: "lease"; WhilePresent: "while_present" }>;
@@ -393,6 +435,7 @@ export declare class ManifestsClient {
 
 export declare const ManifestsService: Readonly<{ wireName: "abstraction.storage/manifests@1"; Client: typeof ManifestsClient }>;
 
+// [Name](https://openabstractions.github.io/reference.html#concept-storage.manifest-name):
 // A name a program uses for this manifest, in that program's own vocabulary.
 // scheme is an open catalogue; seeds ollama, hf, lmstudio, comfyui, flm, jan,
 // oci, stabilitymatrix, pinokio, swarmui.
@@ -401,6 +444,7 @@ export interface Name {
   name: string;
 }
 
+// [Object](https://openabstractions.github.io/reference.html#concept-storage.content-object):
 // One stored object, by stat only. locator is opaque provider binding data, as
 // storage Ref.locator; applications never treat it as a path or as authority.
 // partial marks an interrupted transfer the store spells as such. digest is
@@ -765,7 +809,11 @@ export declare function encodeStored(v: Stored): Uint8Array;
 
 export declare function encodeUpload(v: Upload): Uint8Array;
 
+export declare const fromJson: <K extends keyof JsonRecords>(kind: K, data: Uint8Array) => JsonRecords[K];
+
 export declare const inventorySourceErrorCodes: readonly ["caller_unavailable", "identity_required"];
+
+export declare const maxAppendBytes: number;
 
 export declare function newAbortResult(): AbortResult;
 
@@ -840,5 +888,7 @@ export declare function newStoreError(): StoreError;
 export declare function newStored(): Stored;
 
 export declare function newUpload(): Upload;
+
+export declare const toJson: <K extends keyof JsonRecords>(kind: K, value: JsonRecords[K]) => Uint8Array;
 
 export {};

@@ -2,11 +2,11 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Open Abstractions — schema</title>
+<title>OpenAbstractions — schema</title>
 <link rel="stylesheet" href="style.css">
 
 <main>
-<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">Open Abstractions</a>
+<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">OpenAbstractions</a>
 <a href="adopt.html">Adopt</a><a href="cases.html">Cases</a><span class="nav-devs-label">for developers</span><a href="reference.html">Reference</a><a href="coverage.html">Coverage</a><a href="catalogue.html">Catalogue</a><a href="https://github.com/openabstractions">GitHub</a></nav>
 
 
@@ -32,7 +32,7 @@
 <li>Argument 1: <code>string</code> <code>entry</code> (required, including zero/false/empty)</li>
 </ul>
 <p>The ledger. limit is 1..256. Continuations are at most 256 bytes and name a retained page position; an unknown one is invalid.</p>
-<h3><code>Lends</code></h3><p><code>request-response</code> <code>LendPage</code></p><ul>
+<h3><code>Lends</code></h3><p><code>request-response</code> <code>LendPage</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
 </ul>

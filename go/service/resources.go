@@ -8,6 +8,7 @@ import (
 	identity "github.com/openabstractions/abstraction-identity"
 	storage "github.com/openabstractions/abstraction-storage/go"
 	api "github.com/openabstractions/abstraction-storage/go/abstraction/storage/content"
+	contentdigest "github.com/openabstractions/abstraction-storage/go/digest"
 	"io"
 	"os"
 	"sync"
@@ -30,6 +31,7 @@ type resource struct {
 	mu            sync.Mutex
 	file          *os.File
 	initial       os.FileInfo
+	stamp         string
 	digest, scope string
 	expires       time.Time
 }
@@ -44,17 +46,18 @@ func (r *resource) close() {
 }
 
 type registry struct {
-	mu        sync.Mutex
-	store     storage.Store
-	policy    Policy
-	resources map[string]*resource
-	pending   map[string]int
-	closed    bool
-	now       func() time.Time
+	mu            sync.Mutex
+	store         storage.Store
+	policy        Policy
+	resources     map[string]*resource
+	pending       map[string]int
+	pendingDigest map[string]int
+	closed        bool
+	now           func() time.Time
 }
 
 func newRegistry(store storage.Store, policy Policy) *registry {
-	return &registry{store: store, policy: policy, resources: map[string]*resource{}, pending: map[string]int{}, now: time.Now}
+	return &registry{store: store, policy: policy, resources: map[string]*resource{}, pending: map[string]int{}, pendingDigest: map[string]int{}, now: time.Now}
 }
 func (r *registry) sweep() {
 	r.mu.Lock()
@@ -80,17 +83,6 @@ func (r *registry) close() {
 	for _, v := range old {
 		v.close()
 	}
-}
-func validDigest(d string) bool {
-	if len(d) != 71 || d[:7] != "sha256:" {
-		return false
-	}
-	for _, c := range d[7:] {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return false
-		}
-	}
-	return true
 }
 
 type receiver struct {
@@ -129,7 +121,7 @@ func policyStatus(ctx context.Context, err error) string {
 }
 func (c receiver) Open(digest string) (api.OpenResult, error) {
 	result := func(s api.OpenOutcome) (api.OpenResult, error) { return api.OpenResult{Outcome: s}, nil }
-	if !validDigest(digest) {
+	if !contentdigest.Valid(digest) {
 		return result(api.OpenOutcomeInvalid)
 	}
 	if status := c.authorization(digest); status != "" {
@@ -142,13 +134,16 @@ func (c receiver) Open(digest string) (api.OpenResult, error) {
 	r := c.registry
 	r.sweep()
 	r.mu.Lock()
-	count, total := r.pending[c.scope], 0
-	for _, n := range r.pending {
+	count, total := 0, 0
+	for scope, n := range r.pending {
 		total += n
+		if ownsScope(c.ctx, c.scope, scope) {
+			count += n
+		}
 	}
 	total += len(r.resources)
 	for _, v := range r.resources {
-		if v.scope == c.scope {
+		if ownsScope(c.ctx, c.scope, v.scope) {
 			count++
 		}
 	}
@@ -161,10 +156,15 @@ func (c receiver) Open(digest string) (api.OpenResult, error) {
 		return result(api.OpenOutcomeExhausted)
 	}
 	r.pending[c.scope]++
+	r.pendingDigest[digest]++
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
 		r.pending[c.scope]--
+		r.pendingDigest[digest]--
+		if r.pendingDigest[digest] == 0 {
+			delete(r.pendingDigest, digest)
+		}
 		if r.pending[c.scope] == 0 {
 			delete(r.pending, c.scope)
 		}
@@ -195,7 +195,7 @@ func (c receiver) Open(digest string) (api.OpenResult, error) {
 			f.Close()
 		}
 	}()
-	info, e := f.Stat()
+	stamp, info, e := identity.FileStamp(f)
 	if e != nil || !info.Mode().IsRegular() || !os.SameFile(before, info) || info.Size() < 0 {
 		return result(api.OpenOutcomeUnavailable)
 	}
@@ -212,7 +212,7 @@ func (c receiver) Open(digest string) (api.OpenResult, error) {
 	if r.closed {
 		return result(api.OpenOutcomeUnavailable)
 	}
-	r.resources[handle] = &resource{file: f, initial: info, digest: digest, scope: c.scope, expires: r.now().Add(IdleLifetime)}
+	r.resources[handle] = &resource{file: f, initial: info, stamp: stamp, digest: digest, scope: c.scope, expires: r.now().Add(IdleLifetime)}
 	keep = true
 	return api.OpenResult{Outcome: api.OpenOutcomeOpened, Resource: &api.Resource{Handle: handle, Digest: digest, Size: info.Size(), Verification: api.VerificationUnverified}}, nil
 }
@@ -225,7 +225,7 @@ func (c receiver) find(handle string) (*resource, string) {
 	if v == nil {
 		return nil, "gap"
 	}
-	if c.scope == "" || v.scope != c.scope {
+	if !ownsScope(c.ctx, c.scope, v.scope) {
 		return nil, "forbidden"
 	}
 	return v, ""
@@ -266,11 +266,11 @@ func (c receiver) Read(handle string, offset, maxBytes int64) (api.ReadResult, e
 		r.mu.Unlock()
 		return result(api.ReadOutcomeChanged)
 	}
-	before, e := v.file.Stat()
+	before, _, e := identity.FileStamp(v.file)
 	if e != nil {
 		return result(api.ReadOutcomeUnavailable)
 	}
-	if before.Size() != v.initial.Size() || !before.ModTime().Equal(v.initial.ModTime()) {
+	if before != v.stamp {
 		return changed()
 	}
 	total := v.initial.Size()
@@ -286,11 +286,11 @@ func (c receiver) Read(handle string, offset, maxBytes int64) (api.ReadResult, e
 	if e != nil && e != io.EOF {
 		return result(api.ReadOutcomeUnavailable)
 	}
-	after, e := v.file.Stat()
+	after, _, e := identity.FileStamp(v.file)
 	if e != nil {
 		return result(api.ReadOutcomeUnavailable)
 	}
-	if after.Size() != total || !after.ModTime().Equal(v.initial.ModTime()) || int64(read) != n {
+	if after != v.stamp || int64(read) != n {
 		return changed()
 	}
 	if c.ctx.Err() != nil {

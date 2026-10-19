@@ -2,11 +2,11 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Open Abstractions — schema</title>
+<title>OpenAbstractions — schema</title>
 <link rel="stylesheet" href="style.css">
 
 <main>
-<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">Open Abstractions</a>
+<nav class="site" aria-label="Primary navigation"><a class="name" href="index.html">OpenAbstractions</a>
 <a href="adopt.html">Adopt</a><a href="cases.html">Cases</a><span class="nav-devs-label">for developers</span><a href="reference.html">Reference</a><a href="coverage.html">Coverage</a><a href="catalogue.html">Catalogue</a><a href="https://github.com/openabstractions">GitHub</a></nav>
 
 
@@ -14,38 +14,41 @@
 <p class="lead">Use this reference to inspect fields, methods, accepted values and failure outcomes. For setup and working examples, start with the <a href="reference.html">API guide</a>.</p>
 <p>Definition: <code>abstraction.storage.content</code></p>
 <nav aria-label="Schema sections" class="meta"><a href="#service-ContentReader">ContentReader</a> · <a href="#service-ContentWriter">ContentWriter</a> · <a href="#service-ContentChanges">ContentChanges</a> · <a href="#service-Holds">Holds</a> · <a href="#service-Manifests">Manifests</a> · <a href="#service-Inventory">Inventory</a> · <a href="#service-ContentRemover">ContentRemover</a> · <a href="#service-InventorySource">InventorySource</a> · <a href="#types">Types</a> · <a href="#structs">Fields</a> · <a href="#enums">Enumerations</a> · <a href="#constants">Constants</a> · <a href="#encoding">Encoding</a> · <a href="#refusals">Refusals</a></nav>
-<h2 id="service-ContentReader">Service <code>ContentReader</code> <span class="tag">[DEF-S1]</span></h2>
-<p>Read-only bounded access through configured native Store+Local adapters. Naming lookup is unverified; unsupported providers refuse. Writes use the separate content-writer profile. Callbacks are trusted provider code required to honor bounded execution/context.</p>
+<h2 id="service-ContentReader">Service <a href="https://openabstractions.github.io/reference.html#concept-storage.content-reader-service"><code>ContentReader</code></a> <span class="tag">[DEF-S1]</span></h2>
+<p><a href="https://openabstractions.github.io/reference.html#concept-storage.content-reader-service">ContentReader</a>. Read-only bounded access through configured native Store+Local adapters. Naming lookup is unverified; unsupported providers refuse. Writes use the separate content-writer profile. Callbacks are trusted provider code required to honor bounded execution/context.</p>
 <p>Wire identity: <code>abstraction.storage/content-reader@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Canonical sha256: plus 64 lowercase hexadecimal digits. Explicit content policy required; same-account identity alone grants no content permission. At most 32 resources globally and 8 per scope; 30 seconds idle expires.</p>
 <h3><code>Open</code></h3><p><code>request-response</code> <code>OpenResult</code></p><ul>
 <li>Argument 1: <code>string</code> <code>digest</code> (required, including zero/false/empty)</li>
 </ul>
+<p>Service result postcondition: <code>resource</code> is present exactly when <code>outcome</code> is <code>opened</code>. Clients validate before return; dispatchers validate before reply. Standalone record codecs remain structural.</p>
 <p>offset&gt;=0; max_bytes is 1..65536. Authority rechecked before bytes. Unknown/expired/closed/restarted resources give gap; another scope&#39;s known resource gives forbidden.</p>
-<h3><code>Read</code></h3><p><code>request-response</code> <code>ReadResult</code></p><ul>
+<h3><code>Read</code></h3><p><code>request-response</code> <code>ReadResult</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>offset</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>max_bytes</code> (required, including zero/false/empty)</li>
 </ul>
+<p>Service result postcondition: <code>chunk</code> is present exactly when <code>outcome</code> is <code>data</code>. Clients validate before return; dispatchers validate before reply. Standalone record codecs remain structural.</p>
 <p>Release own scoped resource even after content authorization revocation. Provider shutdown closes all owned resources.</p>
-<h3><code>Close</code></h3><p><code>request-response</code> <code>CloseResult</code></p><ul>
+<h3><code>Close</code></h3><p><code>request-response</code> <code>CloseResult</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
 </ul>
-<h2 id="service-ContentWriter">Service <code>ContentWriter</code> <span class="tag">[DEF-S1]</span></h2>
-<p>Bounded authorized writes through configured native Store+Local+Writable adapters. Uploads idle for 30 seconds expire and are discarded. Committed request records are retained for 10 minutes within one provider lifetime. Provider shutdown discards staged uploads.</p>
+<h2 id="service-ContentWriter">Service <a href="https://openabstractions.github.io/reference.html#concept-storage.content-writer-service"><code>ContentWriter</code></a> <span class="tag">[DEF-S1]</span></h2>
+<p><a href="https://openabstractions.github.io/reference.html#concept-storage.content-writer-service">ContentWriter</a>: Bounded authorized writes through configured native Store+Local+Writable adapters. Uploads idle for 30 seconds expire and are discarded. Committed request records are retained for 10 minutes within one provider lifetime. Provider shutdown discards staged uploads.</p>
 <p>Wire identity: <code>abstraction.storage/content-writer@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>request is a caller-retained identity of 16..128 characters from A-Z a-z 0-9 _ -, scoped to the receiving account/program. digest is canonical sha256; size is the declared total, 0..limit. Write authorization precedes every lookup and provider effect. The same request with the same digest and size returns its live upload or committed result; different digest or size is conflict. present reports an existing naming match. busy reports another live upload of the same digest. At most 16 uploads globally, 4 per scope and 256 request records.</p>
-<h3><code>Begin</code></h3><p><code>request-response</code> <code>BeginResult</code></p><ul>
+<h3><code>Begin</code></h3><p><code>request-response</code> <code>BeginResult</code> · idempotency key request <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>request</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>string</code> <code>digest</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>size</code> (required, including zero/false/empty)</li>
 </ul>
+<p>Service result postcondition: <code>upload</code> is present exactly when <code>outcome</code> is <code>started</code>. Clients validate before return; dispatchers validate before reply. Standalone record codecs remain structural.</p>
 <p>data is 1..65536 bytes at offset equal to received. Authority rechecked before bytes are staged. A different offset stages nothing and returns out_of_order with received. Bytes beyond the declared size stage nothing and return too_large. Unknown/expired/aborted/restarted uploads give gap; another scope&#39;s upload gives forbidden.</p>
 <h3><code>Append</code></h3><p><code>request-response</code> <code>AppendResult</code></p><ul>
 <li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
@@ -56,6 +59,7 @@
 <h3><code>Commit</code></h3><p><code>request-response</code> <code>CommitResult</code></p><ul>
 <li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
 </ul>
+<p>Service result postcondition: <code>stored</code> is present exactly when <code>outcome</code> is <code>committed</code>. Clients validate before return; dispatchers validate before reply. Standalone record codecs remain structural.</p>
 <p>Discard own staged upload and its request record, including after write authorization revocation.</p>
 <h3><code>Abort</code></h3><p><code>request-response</code> <code>AbortResult</code></p><ul>
 <li>Argument 1: <code>string</code> <code>handle</code> (required, including zero/false/empty)</li>
@@ -63,28 +67,28 @@
 <h2 id="service-ContentChanges">Service <code>ContentChanges</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Bounded authorized observation of objects a content store gains or loses. The provider journal retains a bounded number of recent changes per lifetime with no per-subscriber queue; a subscriber that falls behind receives gap and rebuilds from List. Service-mediated commits are journaled when they publish. External additions and deletions are journaled when the provider&#39;s optional listing capability is polled; changes that cancel out between polls are not reported. removed currently reports only external deletions, because the service has no delete operation. A provider restart starts a new epoch.</p>
 <p>Wire identity: <code>abstraction.storage/content-changes@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Empty cursor starts at the current journal end. Cursors are at most 256 bytes and bind provider epoch and sequence. A cursor from another epoch or older than the retained journal returns gap. max_changes is 1..256; wait_ms is 0..30000 and waits at the current end for an append, then rereads once. Observe authorization is checked on every call and rechecked after a wait; each entry is filtered through the read policy for its digest. A read decision outage returns unavailable without advancing. Bounded waiter exhaustion returns unavailable.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>ChangePage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>ChangePage</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>max_changes</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Empty continuation freezes a new snapshot of the provider&#39;s known objects and its change cursor. limit is 1..256. Continuations are at most 256 bytes and name a retained snapshot; an unknown, expired or restarted snapshot returns gap. At most 8 snapshots are retained, each for 30 idle seconds; exhaustion returns unavailable. Observe authorization and per-object read filtering apply as for Observe.</p>
-<h3><code>List</code></h3><p><code>request-response</code> <code>ListingPage</code></p><ul>
+<h3><code>List</code></h3><p><code>request-response</code> <code>ListingPage</code> · readonly</p><ul>
 <li>Argument 1: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Holds">Service <code>Holds</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Declared holds of the bound program. Gated by abstraction.storage/holds.manage, whose contract default permits the bound program on resource self and nothing else. Holds are retained until released, expired, or the program is removed under the uninstall policy; released and expired holds read unknown after audit_retention_ms, readable on an inventory page.</p>
 <p>Wire identity: <code>abstraction.storage/holds@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>request is caller-retained, 16..128 characters from A-Z a-z 0-9 _ -, scoped to the receiving account and program; the same request with the same arguments returns the existing hold, different arguments conflict. Only declared holds are created here; the holder is the bound peer. lease_ms is 1..2592000000 for lease and zero otherwise. At most 4096 holds per program; exhausted otherwise.</p>
-<h3><code>Hold</code></h3><p><code>request-response</code> <code>HoldResult</code></p><ul>
+<h3><code>Hold</code></h3><p><code>request-response</code> <code>HoldResult</code> · idempotency key request <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>request</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>string</code> <code>target</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>string</code> <code>purpose</code> (required, including zero/false/empty)</li>
@@ -92,7 +96,7 @@
 <li>Argument 5: <code>i64</code> <code>lease_ms</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Release an own declared hold. Another program&#39;s hold, a released hold past retention and an unknown id are unknown.</p>
-<h3><code>Release</code></h3><p><code>request-response</code> <code>ReleaseResult</code></p><ul>
+<h3><code>Release</code></h3><p><code>request-response</code> <code>ReleaseResult</code> · idempotent</p><ul>
 <li>Argument 1: <code>string</code> <code>hold</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Extend an own lease by lease_ms from the service&#39;s time. An expired lease is expired and is not revived.</p>
@@ -103,52 +107,52 @@
 <h2 id="service-Manifests">Service <code>Manifests</code> <span class="tag">[DEF-S1]</span></h2>
 <p>Manifests the service knows: published by programs, imported from designated sources, or created by delivery. Gated by abstraction.storage/holds.manage for Publish and by abstraction.storage/inventory.read for Describe of another program&#39;s manifest.</p>
 <p>Wire identity: <code>abstraction.storage/manifests@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p></p>
-<h3><code>Describe</code></h3><p><code>request-response</code> <code>DescribeResult</code></p><ul>
+<h3><code>Describe</code></h3><p><code>request-response</code> <code>DescribeResult</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>id</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Record a content-addressed manifest whose hashed or named entries are all findable, or an index manifest whose referenced manifests are all known. request is a caller-retained identity as in Holds. present reports an identical manifest already recorded. The publishing program receives a declared hold with purpose fetched and a 24-hour lease; it upgrades it through Holds. Name-addressed manifests are published only by designated sources.</p>
-<h3><code>Publish</code></h3><p><code>request-response</code> <code>PublishResult</code></p><ul>
+<h3><code>Publish</code></h3><p><code>request-response</code> <code>PublishResult</code> · idempotency key request</p><ul>
 <li>Argument 1: <code>string</code> <code>request</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>Manifest</code> <code>manifest</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-Inventory">Service <code>Inventory</code> <span class="tag">[DEF-S1]</span></h2>
 <p>What the machine holds and who depends on it. List composes every designated source; ListStore dispatches only designated sources accepted for its exact store.</p>
 <p>Wire identity: <code>abstraction.storage/inventory@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>limit 1..256 combined manifests, stray objects and dangling references per page. Gated by abstraction.storage/inventory.read; each manifest and object is filtered through content.read for its digests.</p>
-<h3><code>List</code></h3><p><code>request-response</code> <code>InventoryPage</code></p><ul>
+<h3><code>List</code></h3><p><code>request-response</code> <code>InventoryPage</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 <li>Argument 1: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Pages one registered store&#39;s inventory. Gated by abstraction.storage/inventory.read and the same per-digest content.read policy as List. Only designated sources whose accepted store set includes store are invoked; other designated sources are not read. The source&#39;s records are filtered to this exact store. The first page carries only this store; later pages carry none. Store is a non-empty accepted store name of at most 256 bytes. A store not currently designated returns invalid without reading any source. Continuations are bound to this store and caller; using one with another store returns forbidden. Dangling references are omitted because they carry no store identity.</p>
-<h3><code>ListStore</code></h3><p><code>request-response</code> <code>InventoryPage</code></p><ul>
+<h3><code>ListStore</code></h3><p><code>request-response</code> <code>InventoryPage</code> · readonly</p><ul>
 <li>Argument 1: <code>string</code> <code>store</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Every hold on one manifest id or digest, re-observed at call time through each source&#39;s Verify: observed holds return as verified or are omitted; declared holds return as declared. Dangling references naming the target&#39;s names are included.</p>
-<h3><code>Holders</code></h3><p><code>request-response</code> <code>InventoryPage</code></p><ul>
+<h3><code>Holders</code></h3><p><code>request-response</code> <code>InventoryPage</code> · readonly</p><ul>
 <li>Argument 1: <code>string</code> <code>target</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Manifests and objects with no declared hold and no verified observed hold at two observations at least grace_ms apart, oldest first.</p>
-<h3><code>Unheld</code></h3><p><code>request-response</code> <code>InventoryPage</code></p><ul>
+<h3><code>Unheld</code></h3><p><code>request-response</code> <code>InventoryPage</code> · readonly</p><ul>
 <li>Argument 1: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Manifests and objects carrying this canonical digest with evidence hashed or named, and dangling references whose expected_digest equals it.</p>
-<h3><code>Find</code></h3><p><code>request-response</code> <code>InventoryPage</code></p><ul>
+<h3><code>Find</code></h3><p><code>request-response</code> <code>InventoryPage</code> · readonly</p><ul>
 <li>Argument 1: <code>string</code> <code>digest</code> (required, including zero/false/empty)</li>
 </ul>
 <h2 id="service-ContentRemover">Service <code>ContentRemover</code> <span class="tag">[DEF-S1]</span></h2>
 <p></p>
 <p>Wire identity: <code>abstraction.storage/content-remover@1</code></p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p>Remove an unheld manifest or object from a Removable store, journaled as removed. Gated by abstraction.storage/content.remove on resource store:&lt;name&gt;. A target only observed holds ever named is removable after a recorded asks answer. A target in a store whose source does not list remove among its capabilities is unsupported.</p>
@@ -159,19 +163,19 @@
 <p>A provider the runtime reads. The source listens on the shared identity-bound transport and serves only its own account. A call whose peer identity could not be obtained fails with the error code caller_unavailable, and one on a transport that bound no identity with identity_required; a bound peer of another account reads forbidden. The runtime accepts a source only under an abstraction.storage/inventory.provide rule for the bound program and the named stores. Sources never talk to applications.</p>
 <p>Wire identity: <code>abstraction.storage/inventory-source@1</code></p>
 <p>Handler error codes, declared by <code>inventory_source_error_codes</code>: <code>caller_unavailable</code>, <code>identity_required</code>. Generated bindings name each as a ServiceErrorCode member beside the dispatcher's own codes.</p>
-<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. The selected generated dispatcher validates the method and typed arguments; the selector does not authorize callers or interpret method payloads.</p>
+<p>Multiple services share this namespace. Generated ServiceName (Go) and service_name (C++/Python) validate the request envelope and version before returning its service identity for routing. Go ServiceMethod returns the service and method routing pair through the same strict decoder, exposing no arguments. The selected generated dispatcher validates the method and typed arguments; these selectors do not authorize callers or establish a handler outcome.</p>
 <p>Frames carry version, service, method and typed arguments. Transport owns framing, associated exchanges, deadlines and connections. Unknown version/service/method and malformed arguments are rejected before invoking a handler. One-way WriteFrame success means local submission, not remote acceptance or persistence.</p>
 <p>Request-response methods use ExchangeFrame. Replies carry version, service, method, ok and payload; success payload contains typed value (or an empty object for void). Error payload contains nonempty code and message, which may be empty. ServiceError preserves unknown codes. Unexpected handler failures become handler_error without private details; invalid results become invalid_result. Clients validate reply identity and result before exposing it. A malformed frame or transport failure remains a local error; the transport must associate each response with its exchange. C++ dispatchers are pure protocol bindings, not listening servers.</p>
 <p></p>
-<h3><code>Describe</code></h3><p><code>request-response</code> <code>SourceDescription</code></p><ul>
+<h3><code>Describe</code></h3><p><code>request-response</code> <code>SourceDescription</code> · readonly <span class="tag">[DEF-S3]</span></p><ul>
 </ul>
-<p>Frozen listing of every manifest, stray object and dangling reference the source observes, in store then id order. limit 1..256. No hashing; sizes come from stat and digests only from the program&#39;s own index or names.</p>
+<p>Frozen listing of every manifest, stray object and dangling reference the source observes, in store then id order. limit 1..256. No hashing; sizes come from stat, and digests from the program&#39;s own index or names or from a hash the source recorded earlier (a pinned release, or a file a Verify of its manifest asked for).</p>
 <h3><code>Snapshot</code></h3><p><code>request-response</code> <code>SourcePage</code></p><ul>
 <li>Argument 1: <code>string</code> <code>continuation</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>limit</code> (required, including zero/false/empty)</li>
 </ul>
 <p>Changes since cursor in journal order; empty cursor starts at the end; gap after restart or an aged cursor. max_changes 1..256; wait_ms 0..30000.</p>
-<h3><code>Observe</code></h3><p><code>request-response</code> <code>SourcePage</code></p><ul>
+<h3><code>Observe</code></h3><p><code>request-response</code> <code>SourcePage</code> · readonly</p><ul>
 <li>Argument 1: <code>string</code> <code>cursor</code> (required, including zero/false/empty)</li>
 <li>Argument 2: <code>i64</code> <code>max_changes</code> (required, including zero/false/empty)</li>
 <li>Argument 3: <code>i64</code> <code>wait_ms</code> (required, including zero/false/empty)</li>
@@ -351,7 +355,7 @@
 <tr><td>4</td><td><code>complete</code></td><td><code>bool</code></td><td>required</td><td>—</td></tr>
 <tr><td>5</td><td><code>cursor</code></td><td><code>string</code></td><td>required</td><td>—</td></tr>
 </tbody></table></div>
-<h3 id="struct-Object"><code>Object</code></h3>
+<h3 id="struct-Object"><a href="https://openabstractions.github.io/reference.html#concept-storage.content-object"><code>Object</code></a></h3>
 <p class="meta">unknown fields <code>refuse</code></p>
 <div class="wrap"><table>
 <thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
@@ -377,7 +381,7 @@
 <tr><td>7</td><td><code>manifest</code></td><td><code>string</code></td><td>optional · omitted when zero</td><td>—</td></tr>
 <tr><td>8</td><td><code>annotations</code></td><td><code>map&lt;string,string&gt;</code></td><td>optional · omitted when zero</td><td>—</td></tr>
 </tbody></table></div>
-<h3 id="struct-Name"><code>Name</code></h3>
+<h3 id="struct-Name"><a href="https://openabstractions.github.io/reference.html#concept-storage.manifest-name"><code>Name</code></a></h3>
 <p class="meta">unknown fields <code>refuse</code></p>
 <div class="wrap"><table>
 <thead><tr><th>id</th><th>field</th><th>type</th><th>presence</th><th>named elsewhere</th></tr></thead>
@@ -889,6 +893,7 @@
 <div class="wrap"><table>
 <thead><tr><th>name</th><th>type</th><th>value</th></tr></thead>
 <tbody>
+<tr><td><code>max_append_bytes</code></td><td><code>i32</code></td><td><code>65536</code></td></tr>
 <tr><td><code>inventory_source_error_codes</code></td><td><code>list&lt;string&gt;</code></td><td><code>caller_unavailable, identity_required</code></td></tr>
 </tbody></table></div>
 <h2 id="refusals">Refusal words <span class="tag">[DEF-R1]</span></h2>
